@@ -22,8 +22,9 @@ if "%SCANDIR%"=="" (
     exit /b 1
 )
 
-if not exist "%SCANDIR%" (
-    echo  ERROR: Folder not found.
+if not exist "%SCANDIR%\" (
+    echo  ERROR: A file was dropped onto this script, or the folder was not found.
+    echo  This script converts all Profile 7 files in a folder. Please drop a folder onto it.
     pause
     exit /b 1
 )

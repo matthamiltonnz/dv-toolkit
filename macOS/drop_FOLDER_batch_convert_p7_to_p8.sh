@@ -62,6 +62,13 @@ fi
 
 SCANDIR="$1"
 
+if [ -f "$SCANDIR" ]; then
+    err "A file was dropped onto this script. This script converts all P7 files in a folder."
+    err "To convert a single file, use drop_FILE_convert_compress.sh instead."
+    read -r -p "  Press Enter to close..."
+    exit 1
+fi
+
 if [ ! -d "$SCANDIR" ]; then
     err "Folder not found: $SCANDIR"
     read -r -p "  Press Enter to close..."
