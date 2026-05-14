@@ -303,20 +303,22 @@ To continue development in a new Claude conversation, paste the contents of this
 
 ---
 
-## Investigated Approaches: DoViBaker
+## Investigated Approaches: DoViBaker / DoviScripts
 
-[DoViBaker](https://github.com/erazortt/DoViBaker) is an AviSynth+ plugin that processes Profile 7 FEL sources by baking the BL, EL, and RPU together into a single 16-bit RGB PQ output. This is the only known tool that actually applies the FEL luma/chroma residual to produce a corrected image — preserving the full FEL quality that disc players provide.
+[DoViBaker](https://github.com/erazortt/DoViBaker) is an AviSynth+ plugin that processes Profile 7 FEL sources by combining the BL, EL, and RPU to produce a corrected output — reportedly a 12-bit stream that applies the luma/chroma residual from the FEL and incorporates the display trim metadata from the RPU. This is the only known tool that actually uses the FEL correction data rather than discarding it. The internal implementation details have not been verified against the source code.
 
-**Why it was investigated:** The question was whether DoViBaker could be used as a pre-processing step to preserve FEL quality in the P8 conversion pipeline.
+[DoviScripts](https://github.com/erazortt/DoviScripts) is a companion package from the same author that wraps DoViBaker in a workflow capable of outputting a Profile 8 MKV — closing the loop from FEL P7 source to a distributable P8 file.
+
+**Why it was investigated:** The question was whether this pipeline could preserve FEL quality in the P8 conversion, rather than discarding the luma/chroma residual as `dovi_tool -m 2 convert --discard` does.
 
 **Why it was not integrated:**
 
-1. **Re-encoding required** — DoViBaker outputs a processed frame sequence that must then be re-encoded to HEVC. This is a lossy step; there is no way to produce a lossless P8 file from a FEL-processed source without a significant quality cost from the encode.
-2. **AviSynth-only** — DoViBaker is a plugin for AviSynth+ (Windows), not a standalone tool. It cannot be called from a bash script or a Windows batch file without a full AviSynth scripting environment.
-3. **Marginal quality gain** — As documented in the Visual Quality section above, the FEL residual is a subtle correction on an already high-quality base layer. Re-encoding introduces artefacts that would likely exceed any quality gain from the residual, particularly at practical bitrates for home media servers.
-4. **Out of scope** — The toolkit goal is a fast, lossless remux (no re-encode). DoViBaker turns this into a full transcode pipeline.
+1. **Re-encoding required** — DoViBaker outputs a processed frame sequence that must then be re-encoded to HEVC. This is a lossy step; there is no way to carry the FEL correction into a lossless P8 output. Re-encoding at practical home-server bitrates would introduce artefacts that likely exceed any quality gained from the residual.
+2. **AviSynth-only** — DoViBaker is a plugin for AviSynth+ (Windows), not a standalone tool. It cannot be called from a batch file or shell script without a full AviSynth scripting environment.
+3. **Marginal quality gain** — As documented in the Visual Quality section above, the FEL residual is a subtle correction on an already high-quality base layer. The RPU dynamic metadata — the primary driver of the DV advantage — is fully preserved regardless.
+4. **Out of scope** — The toolkit goal is a fast, lossless remux (no re-encode). DoViBaker + DoviScripts turns this into a full transcode pipeline.
 
-**Conclusion:** DoViBaker is the right tool if the goal is a reference-quality archival encode using the full FEL signal and a high-bitrate encode is acceptable. It is not suitable for this toolkit's remux-only workflow.
+**Conclusion:** DoViBaker + DoviScripts is the right approach if the goal is a reference-quality archival encode that preserves the full FEL signal and a high bitrate is acceptable. It is not suitable for this toolkit's remux-only workflow. Worth revisiting if lossless HEVC encoding from a processed FEL source ever becomes practical.
 
 ---
 
