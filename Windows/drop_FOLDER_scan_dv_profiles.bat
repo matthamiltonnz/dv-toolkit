@@ -42,7 +42,6 @@ set PREV_COUNT=0
 set PREV_P7=0
 set PREV_P8=0
 set PREV_OTHER=0
-set PREV_FOLDERS=
 
 if exist "%TMP_STATE%" (
     echo  An existing scan session was found.
@@ -71,7 +70,6 @@ set PREV_COUNT=0
 set PREV_P7=0
 set PREV_P8=0
 set PREV_OTHER=0
-set PREV_FOLDERS=
 goto :begin_scan
 :restore_tmps
 if not exist "%TMP_P7%"    copy nul "%TMP_P7%" /y >nul
@@ -134,11 +132,12 @@ set /a TOTAL_P8=PREV_P8+COUNT_P8
 set /a TOTAL_OTHER=PREV_OTHER+COUNT_OTHER
 
 rem Build folder list
-if "!PREV_FOLDERS!"=="" (
-    set "ALL_FOLDERS=%SCANDIR%"
-) else (
-    set "ALL_FOLDERS=!PREV_FOLDERS!;%SCANDIR%"
-)
+if "!APPEND!"=="1" goto :build_append
+set "ALL_FOLDERS=%SCANDIR%"
+goto :save_state
+:build_append
+set "ALL_FOLDERS=!PREV_FOLDERS!;%SCANDIR%"
+:save_state
 
 rem -----------------------------------------------
 rem  Save state for next run
