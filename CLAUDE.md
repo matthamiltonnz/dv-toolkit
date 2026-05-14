@@ -28,7 +28,7 @@ Developed through an iterative Claude conversation (May 2026) to solve a specifi
 | 5 | Single layer, no HDR10 fallback | Disney+ |
 | 7 | Dual layer (BL + EL), HDR10 compatible | UHD Blu-ray discs |
 | 8 | Single layer, HDR10 compatible | Streaming, converted rips |
-| 10 | AV1 container | Future streaming |
+| 10 | AV1 container | Emerging — DV in AV1 not yet in mainstream streaming use (AV1 itself is widely used by YouTube/Netflix but without DV) |
 
 **Profile 7** stores a base layer (BL, standard HDR10-compatible HEVC) and a separate enhancement layer (EL) that carries the Dolby Vision dynamic metadata. The EL can be FEL (Full Enhancement Layer — full resolution) or MEL (Minimum Enhancement Layer). FEL requires dedicated hardware (disc players) to process. MEL is more widely compatible.
 
