@@ -63,22 +63,21 @@ if exist "%TMP_STATE%" (
     if /i "!CHOICE!"=="Y" set "APPEND=1"
 )
 
-if "!APPEND!"=="0" (
-    rem Start fresh - clear all temp files
-    copy nul "%TMP_P7%" /y >nul
-    copy nul "%TMP_P8%" /y >nul
-    copy nul "%TMP_OTHER%" /y >nul
-    set PREV_COUNT=0
-    set PREV_P7=0
-    set PREV_P8=0
-    set PREV_OTHER=0
-    set PREV_FOLDERS=
-) else (
-    rem Restore previous file lists if they exist
-    if not exist "%TMP_P7%"    copy nul "%TMP_P7%" /y >nul
-    if not exist "%TMP_P8%"    copy nul "%TMP_P8%" /y >nul
-    if not exist "%TMP_OTHER%" copy nul "%TMP_OTHER%" /y >nul
-)
+if "!APPEND!"=="1" goto :restore_tmps
+copy nul "%TMP_P7%" /y >nul
+copy nul "%TMP_P8%" /y >nul
+copy nul "%TMP_OTHER%" /y >nul
+set PREV_COUNT=0
+set PREV_P7=0
+set PREV_P8=0
+set PREV_OTHER=0
+set PREV_FOLDERS=
+goto :begin_scan
+:restore_tmps
+if not exist "%TMP_P7%"    copy nul "%TMP_P7%" /y >nul
+if not exist "%TMP_P8%"    copy nul "%TMP_P8%" /y >nul
+if not exist "%TMP_OTHER%" copy nul "%TMP_OTHER%" /y >nul
+:begin_scan
 
 rem -----------------------------------------------
 rem  Scan the folder
@@ -96,7 +95,7 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
     set /a COUNT+=1
     echo Checking !COUNT!: %%~nxF
 
-    set PROFILE=
+    set "PROFILE=."
     ffprobe -v quiet -show_streams -of json "%%F" > "%TMP_JSON%" 2>&1
 
     findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
@@ -117,7 +116,7 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
         echo   ^^^ PROFILE 8
         echo %%F >> "%TMP_P8%"
         set /a COUNT_P8+=1
-    ) else if not "!PROFILE!"=="" (
+    ) else if not "!PROFILE!"=="." (
         echo   ^^^ PROFILE !PROFILE!
         echo [Profile !PROFILE!] %%F >> "%TMP_OTHER%"
         set /a COUNT_OTHER+=1

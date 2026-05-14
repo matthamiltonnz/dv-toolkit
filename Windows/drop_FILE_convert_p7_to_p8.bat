@@ -47,7 +47,7 @@ if not exist "%SOURCE%" (
 )
 
 echo  Checking Dolby Vision profile...
-set PROFILE=
+set "PROFILE=."
 ffprobe -v quiet -show_streams -of json "%SOURCE%" > "%TMP_JSON%" 2>&1
 findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
 for /f "usebackq delims=" %%I in ("%TMP_DVLINE%") do (
@@ -62,7 +62,7 @@ if exist "%TMP_JSON%" del "%TMP_JSON%"
 
 if "!PROFILE!"=="7" (
     echo  Profile 7 detected.
-) else if "!PROFILE!"=="" (
+) else if "!PROFILE!"=="." (
     echo  No Dolby Vision profile detected - nothing to convert.
     pause
     exit /b 0

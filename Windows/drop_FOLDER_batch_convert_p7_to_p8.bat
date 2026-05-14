@@ -63,7 +63,7 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
     echo.
     echo  [!SCAN_COUNT!] Checking: !FILENAME!
 
-    set PROFILE=
+    set "PROFILE=."
     ffprobe -v quiet -show_streams -of json "%%F" > "%TMP_JSON%" 2>&1
     findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
     for /f "usebackq delims=" %%I in ("%TMP_DVLINE%") do (
@@ -89,7 +89,7 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
             echo STATUS: FAILED >> "%LOGFILE%"
             set /a ERROR_COUNT+=1
         )
-    ) else if "!PROFILE!"=="" (
+    ) else if "!PROFILE!"=="." (
         echo  No DV profile detected - skipping.
         set /a SKIP_COUNT+=1
     ) else (
