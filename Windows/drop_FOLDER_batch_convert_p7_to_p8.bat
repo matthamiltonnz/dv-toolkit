@@ -6,6 +6,7 @@ set "PATH=%~dp0bin;%PATH%"
 
 set "SCANDIR=%~1"
 set "TMP_JSON=%~dp0tmp_probe.json"
+set "TMP_DVLINE=%~dp0tmp_dvline.txt"
 set "LOGFILE=%~dp0batch_convert_log.txt"
 
 echo.
@@ -62,13 +63,15 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
 
     set "PROFILE="
     ffprobe -v quiet -show_streams -of json "%%F" > "%TMP_JSON%" 2>&1
-    for /f "delims=" %%I in ('findstr /i "dv_profile" "%TMP_JSON%"') do (
+    findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
+    for /f "usebackq delims=" %%I in ("%TMP_DVLINE%") do (
         set "LINE=%%I"
         set "LINE=!LINE: =!"
         set "LINE=!LINE:"=!"
         set "LINE=!LINE:,=!"
         for /f "tokens=2 delims=:" %%J in ("!LINE!") do set "PROFILE=%%J"
     )
+    if exist "%TMP_DVLINE%" del "%TMP_DVLINE%"
 
     if "!PROFILE!"=="7" (
         echo  Profile 7 detected - converting...
@@ -193,7 +196,9 @@ if "!IS_LOCAL!"=="1" (
 
 echo  Detecting video tracks...
 set TRACK_COUNT=0
-for /f %%C in ('ffprobe -v error -select_streams v -show_entries stream^=index -of csv^=p^=0 "%LOCAL_SOURCE%" 2^>^&1 ^| find /c /v ""') do set TRACK_COUNT=%%C
+ffprobe -v error -select_streams v -show_entries stream=index -of csv=p=0 "%LOCAL_SOURCE%" > "%TMP_JSON%" 2>&1
+for /f "usebackq" %%L in ("%TMP_JSON%") do set /a TRACK_COUNT+=1
+if exist "%TMP_JSON%" del "%TMP_JSON%"
 echo  Found %TRACK_COUNT% video track(s).
 
 if "%TRACK_COUNT%"=="2" (

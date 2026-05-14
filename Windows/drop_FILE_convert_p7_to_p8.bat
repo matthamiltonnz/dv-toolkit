@@ -57,7 +57,10 @@ if errorlevel 1 goto :error
 
 echo.
 echo  [3/7] Detecting video tracks...
-for /f %%C in ('ffprobe -v error -select_streams v -show_entries stream^=index -of csv^=p^=0 "%LOCAL_SOURCE%" 2^>^&1 ^| find /c /v ""') do set TRACK_COUNT=%%C
+set TRACK_COUNT=0
+ffprobe -v error -select_streams v -show_entries stream=index -of csv=p=0 "%LOCAL_SOURCE%" > "%TMP_JSON%" 2>&1
+for /f "usebackq" %%L in ("%TMP_JSON%") do set /a TRACK_COUNT+=1
+if exist "%TMP_JSON%" del "%TMP_JSON%"
 echo  Found !TRACK_COUNT! video track(s).
 if "!TRACK_COUNT!"=="2" (
     echo  Dual-track source detected - extracting base layer and enhancement layer separately...

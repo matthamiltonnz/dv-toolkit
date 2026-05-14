@@ -11,6 +11,7 @@ set "TMP_P8=%~dp0tmp_p8.txt"
 set "TMP_OTHER=%~dp0tmp_other.txt"
 set "TMP_JSON=%~dp0tmp_probe.json"
 set "TMP_STATE=%~dp0tmp_scan_state.txt"
+set "TMP_DVLINE=%~dp0tmp_dvline.txt"
 
 echo.
 echo  Dolby Vision Profile Scanner
@@ -44,7 +45,7 @@ set "PREV_FOLDERS="
 if exist "%TMP_STATE%" (
     echo  An existing scan session was found.
     echo.
-    for /f "tokens=1,* delims==" %%A in (%TMP_STATE%) do (
+    for /f "usebackq tokens=1,* delims==" %%A in ("%TMP_STATE%") do (
         if "%%A"=="COUNT"   set "PREV_COUNT=%%B"
         if "%%A"=="P7"      set "PREV_P7=%%B"
         if "%%A"=="P8"      set "PREV_P8=%%B"
@@ -52,7 +53,7 @@ if exist "%TMP_STATE%" (
         if "%%A"=="FOLDERS" set "PREV_FOLDERS=%%B"
     )
     echo  Previous folders scanned:
-    for %%F in ("%PREV_FOLDERS:;=" "%") do echo    %%~F
+    for %%F in ("%PREV_FOLDERS:;=" "%") do echo    %%F
     echo  Files scanned so far: %PREV_COUNT%
     echo  Profile 7: %PREV_P7%  Profile 8: %PREV_P8%
     echo.
@@ -96,13 +97,15 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
     set "PROFILE="
     ffprobe -v quiet -show_streams -of json "%%F" > "%TMP_JSON%" 2>&1
 
-    for /f "delims=" %%I in ('findstr /i "dv_profile" "%TMP_JSON%"') do (
+    findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
+    for /f "usebackq delims=" %%I in ("%TMP_DVLINE%") do (
         set "LINE=%%I"
         set "LINE=!LINE: =!"
         set "LINE=!LINE:"=!"
         set "LINE=!LINE:,=!"
         for /f "tokens=2 delims=:" %%J in ("!LINE!") do set "PROFILE=%%J"
     )
+    if exist "%TMP_DVLINE%" del "%TMP_DVLINE%"
 
     if "!PROFILE!"=="7" (
         echo   ^^^ PROFILE 7
@@ -153,7 +156,7 @@ echo Last updated: %date% %time% >> "%OUTFILE%"
 echo. >> "%OUTFILE%"
 echo FOLDERS SCANNED >> "%OUTFILE%"
 echo ---------------------------------------- >> "%OUTFILE%"
-for %%F in ("!ALL_FOLDERS:;=" "!") do echo %%~F >> "%OUTFILE%"
+for %%F in ("!ALL_FOLDERS:;=" "!") do echo %%F >> "%OUTFILE%"
 
 echo. >> "%OUTFILE%"
 echo PROFILE 7 FILES (%TOTAL_P7%) >> "%OUTFILE%"

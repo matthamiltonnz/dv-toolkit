@@ -90,7 +90,7 @@ if [ -f "$STATEFILE" ]; then
     echo "  Profile 7: $PREV_P7  Profile 8: $PREV_P8"
     echo ""
     read -r -p "  Add this folder to existing results? [Y=Add / N=Start new scan]: " CHOICE
-    if [[ "${CHOICE^^}" == "Y" ]]; then
+    if [[ "$CHOICE" == "Y" ]] || [[ "$CHOICE" == "y" ]]; then
         APPEND=1
     fi
 fi
