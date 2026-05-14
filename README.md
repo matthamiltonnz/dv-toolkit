@@ -4,7 +4,7 @@
 
 UHD Blu-ray discs encode Dolby Vision using **Profile 7** — a dual-layer format that stores a base HDR10 video stream alongside a separate Dolby Vision enhancement layer. This format is designed for disc playback hardware and is not supported by most streaming devices and software players.
 
-**Apple TV 4K**, Infuse, Jellyfin, Plex, and most smart TV apps require **Dolby Vision Profile 8** — a single-layer format where the DV metadata is embedded directly into the HEVC video stream alongside a standard HDR10 base layer.
+Most streaming devices and media players require **Dolby Vision Profile 8** — a single-layer format where the DV metadata is embedded directly into the HEVC video stream alongside a standard HDR10 base layer.
 
 This toolkit converts MKV rips (made with MakeMKV from UHD Blu-ray discs) from Profile 7 to Profile 8, enabling full Dolby Vision playback on streaming devices. The conversion is lossless — no video re-encoding occurs in the standard workflow, only metadata restructuring. Devices that do not support Dolby Vision at all will automatically fall back to the embedded HDR10 layer.
 
