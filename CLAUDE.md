@@ -53,12 +53,12 @@ When converting to P8, the residual is discarded and the display works solely fr
 
 **In practice, visible differences are negligible for most content**, for several reasons:
 
-- UHD Blu-ray base layers are mastered to very high quality. The FEL residual is a correction on top of an already excellent image, not a replacement for it.
+- Many UHD Blu-ray discs use MEL (Minimum Enhancement Layer) rather than FEL. A MEL EL clip appears solid green — it encodes no pixel-level difference at all. For these sources, the remux-only approach produces identical results to any FEL-aware pipeline.
+- For FEL sources, the benefit depends on how much visible structure is present in the EL clip. The more recognisable the content in the EL, the greater the potential difference — but even then it is limited to scenes with extreme highlights or highly saturated colours where the base layer clips.
 - The RPU dynamic metadata — the primary driver of DV's visual advantage over standard HDR10 — is fully preserved. The display still receives per-frame tone-mapping instructions and can adjust highlights, shadows, and colour volume accordingly.
 - Streaming devices (Apple TV, Chromecast, smart TV apps) have never had access to FEL processing. A streaming service delivering DV content sends Profile 8 — the same format produced by this toolkit.
-- The theoretical advantage of FEL residual is most visible in scenes with very bright highlights or highly saturated colours where the base layer may clip. Even in these cases the difference is subtle and only visible on high-quality reference displays in controlled conditions.
 
-The bottom line: the converted P8 file delivers the same DV experience as streaming-service content. The FEL residual that is discarded was only ever accessible via the disc player's dedicated DV hardware, and that hardware path is bypassed entirely when ripping to a file.
+The bottom line: the converted P8 file delivers the same DV experience as streaming-service content. For MEL sources (common on UHD Blu-ray), there is no difference whatsoever. For FEL sources, any pixel-level difference is limited to extreme-highlight scenes and is only visible on reference displays in controlled conditions. See the DoViBaker / DoviScripts section for tools that can quantify and optionally apply the FEL residual.
 
 ---
 
@@ -309,16 +309,30 @@ To continue development in a new Claude conversation, paste the contents of this
 
 [DoviScripts](https://github.com/erazortt/DoviScripts) is a companion package from the same author that wraps DoViBaker in a workflow capable of outputting a Profile 8 MKV — closing the loop from FEL P7 source to a distributable P8 file.
 
-**Why it was investigated:** The question was whether this pipeline could preserve FEL quality in the P8 conversion, rather than discarding the luma/chroma residual as `dovi_tool -m 2 convert --discard` does.
+[DoViAnalyzer](https://github.com/erazortt/DoViAnalyzer) (same author) calculates whether the RPU-driven colour difference exceeds a perceptible threshold — specifically, whether the difference exceeds 3 bits out of 10 (equivalent to >1 bit out of 8). This can be used to screen a source before deciding whether DoViBaker is worth running.
 
-**Why it was not integrated:**
+### MEL vs FEL — when DoViBaker actually matters
 
-1. **Re-encoding required** — DoViBaker outputs a processed frame sequence that must then be re-encoded to HEVC. This is a lossy step; there is no way to carry the FEL correction into a lossless P8 output. Re-encoding at practical home-server bitrates would introduce artefacts that likely exceed any quality gained from the residual.
-2. **AviSynth-only** — DoViBaker is a plugin for AviSynth+ (Windows), not a standalone tool. It cannot be called from a batch file or shell script without a full AviSynth scripting environment.
-3. **Marginal quality gain** — As documented in the Visual Quality section above, the FEL residual is a subtle correction on an already high-quality base layer. The RPU dynamic metadata — the primary driver of the DV advantage — is fully preserved regardless.
-4. **Out of scope** — The toolkit goal is a fast, lossless remux (no re-encode). DoViBaker + DoviScripts turns this into a full transcode pipeline.
+Per the author's guidance, the benefit of DoViBaker depends entirely on the EL content:
 
-**Conclusion:** DoViBaker + DoviScripts is the right approach if the goal is a reference-quality archival encode that preserves the full FEL signal and a high bitrate is acceptable. It is not suitable for this toolkit's remux-only workflow. Worth revisiting if lossless HEVC encoding from a processed FEL source ever becomes practical.
+- **MEL sources** — the EL clip appears solid green. There is no pixel-level difference encoded. DoViBaker provides no improvement at the pixel level for these sources. The remux-only approach in this toolkit is already optimal.
+- **FEL sources** — the EL clip contains visible structure. The more recognisable the content, the greater the potential pixel-level difference. Worth checking visually before deciding whether to use DoViBaker.
+- **RPU coloring differences** — even for MEL sources, the RPU may encode general colour adjustments. However, the RPU is fully preserved in this toolkit's pipeline (`dovi_tool -m 2 convert` retains it), so this benefit is already captured regardless of DoViBaker.
+
+The author's recommended screening workflow:
+1. Play the EL clip — if green (MEL), skip DoViBaker; the remux approach gives identical results.
+2. If FEL, check whether visible structure is present in the EL. More structure = more potential benefit.
+3. Optionally run DoViAnalyzer to quantify whether the RPU difference exceeds the perceptible threshold.
+4. Only if differences are confirmed significant: use DoViBaker + DoviScripts to produce a re-encoded P8.
+
+**Why it was not integrated into this toolkit:**
+
+1. **Re-encoding required** — DoViBaker outputs a processed frame sequence that must then be re-encoded to HEVC. There is no path to a lossless P8 output via this route. Re-encoding at practical home-server bitrates introduces artefacts that partially offset any quality gained from the FEL residual.
+2. **AviSynth-only** — DoViBaker is a plugin for AviSynth+ (Windows only), not a standalone tool. It cannot be called from a batch file or shell script without a full AviSynth scripting environment.
+3. **Source-dependent benefit** — most UHD Blu-ray rips are MEL, or FEL with subtle residual. The RPU — the primary driver of DV's visual advantage — is already preserved in this toolkit's output. The FEL pixel residual only materially matters on sources where the EL shows visible structure in scenes with extreme highlights.
+4. **Out of scope** — the toolkit goal is a fast, lossless remux. DoViBaker + DoviScripts turns this into a full transcode pipeline.
+
+**Conclusion:** For the majority of sources, this toolkit's remux output is equivalent to or indistinguishable from a DoViBaker encode. DoViBaker + DoviScripts is the right choice for archival work on confirmed FEL sources where the EL shows significant pixel-level content and a re-encode at high bitrate is acceptable. Not suitable for this toolkit's workflow.
 
 ---
 
