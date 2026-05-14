@@ -30,6 +30,7 @@ log "Setting script permissions..."
 
 for f in \
     "$SCRIPTDIR/drop_FILE_convert_compress.sh" \
+    "$SCRIPTDIR/drop_FOLDER_batch_convert_p7_to_p8.sh" \
     "$SCRIPTDIR/drop_FOLDER_scan_dv_profiles.sh"
 do
     if [ -f "$f" ]; then

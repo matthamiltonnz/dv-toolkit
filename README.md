@@ -17,7 +17,7 @@ On macOS with an Apple Silicon Mac, an optional compression mode is available th
 | Feature | Windows | macOS |
 |---------|---------|-------|
 | P7 → P8 conversion (single file) | ✓ `drop_FILE_convert_p7_to_p8.bat` | ✓ `drop_FILE_convert_compress.sh` (remux mode) |
-| P7 → P8 conversion (batch folder) | ✓ `batch_convert_drop_FILE_convert_p7_to_p8.bat` | — |
+| P7 → P8 conversion (batch folder) | ✓ `drop_FOLDER_batch_convert_p7_to_p8.bat` | ✓ `drop_FOLDER_batch_convert_p7_to_p8.sh` |
 | Library profile scanner | ✓ `drop_FOLDER_scan_dv_profiles.bat` | ✓ `drop_FOLDER_scan_dv_profiles.sh` |
 | Compression (re-encode) | ✗ Not supported¹ | ✓ `drop_FILE_convert_compress.sh` (compress mode) |
 
@@ -117,7 +117,7 @@ The scripts copy source files locally during processing. Ensure the drive contai
 
 ---
 
-### `batch_convert_drop_FILE_convert_p7_to_p8.bat` — Batch Folder Converter
+### `drop_FOLDER_batch_convert_p7_to_p8.bat` — Batch Folder Converter
 
 **Drag a folder onto this script** to scan and convert all Profile 7 files within it recursively.
 
@@ -195,20 +195,28 @@ dovi_tool --version
 
 ### 4. Place the scripts and make them executable
 
-Place `drop_FILE_convert_compress.sh` and `drop_FOLDER_scan_dv_profiles.sh` in the `macos/` folder. If you prefer not to install `dovi_tool` system-wide via `/usr/local/bin`, you can instead place the binary in a `macos/bin/` subfolder — the scripts check there automatically.
+Place the scripts in the `macos/` folder. If you prefer not to install `dovi_tool` system-wide via `/usr/local/bin`, you can instead place the binary in a `macos/bin/` subfolder — the scripts check there automatically.
 
 ```
 macos/
   bin/
-    dovi_tool         ← optional, only if not installed system-wide
+    dovi_tool                          ← optional, only if not installed system-wide
   drop_FILE_convert_compress.sh
+  drop_FOLDER_batch_convert_p7_to_p8.sh
   drop_FOLDER_scan_dv_profiles.sh
 ```
 
-Make the scripts executable:
+Run the included setup script to set permissions in one step:
+
+```bash
+bash /path/to/macos/install.sh
+```
+
+Or set permissions manually:
 
 ```bash
 chmod +x /path/to/drop_FILE_convert_compress.sh
+chmod +x /path/to/drop_FOLDER_batch_convert_p7_to_p8.sh
 chmod +x /path/to/drop_FOLDER_scan_dv_profiles.sh
 ```
 
@@ -234,6 +242,8 @@ done
 
 6. Replace `/path/to/script.sh` with the full path to your script (drag the `.sh` file into Terminal to get its path)
 7. Save as an Application — e.g. **Convert DV** or **Scan DV** — to your Applications folder or Desktop
+
+Create one Automator Application per script (`drop_FILE_convert_compress.sh`, `drop_FOLDER_batch_convert_p7_to_p8.sh`, `drop_FOLDER_scan_dv_profiles.sh`), each pointing to its own script path.
 
 **Automator variants for `drop_FILE_convert_compress.sh`:**
 
@@ -344,6 +354,30 @@ ffmpeg -h encoder=libsvtav1 | grep dolbyvision
 
 ---
 
+
+### `drop_FOLDER_batch_convert_p7_to_p8.sh` — Batch Folder Converter
+
+**Drag a folder onto the Automator wrapper** (or run from Terminal) to scan and convert all Profile 7 files within it recursively.
+
+**Usage:**
+```bash
+./drop_FOLDER_batch_convert_p7_to_p8.sh /path/to/folder
+```
+
+**What it does:**
+- Scans all `.mkv`, `.mp4`, and `.ts` files in the folder and all subfolders
+- Skips files that are not Profile 7 (Profile 8, non-DV, etc.)
+- Converts each P7 file to Profile 8 using the same remux pipeline as the single-file script
+- Handles both single-track and dual-track (BL+EL) P7 sources automatically
+- All audio and subtitle tracks are preserved — no track selection (batch mode)
+- On error for any file, logs the failure and continues to the next file
+- Writes a full log to `batch_convert_log.txt` in the scripts folder
+
+> ⚠️ **All Profile 7 files found in the folder will be converted and originals deleted.** This cannot be undone. Make a backup of your files before running this script if you need to preserve the originals.
+
+**Output:** Each converted file replaces its original in-place (same rename/delete workflow as the single-file script).
+
+---
 
 ### `drop_FOLDER_scan_dv_profiles.sh` — Library Scanner
 
