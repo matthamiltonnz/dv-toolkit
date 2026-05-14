@@ -40,6 +40,26 @@ Developed through an iterative Claude conversation (May 2026) to solve a specifi
 
 The RPU is the per-frame or per-shot dynamic metadata that tells a DV display how to tone-map each frame. It is extracted from the EL in P7, converted to P8 format, and injected back into the BL HEVC stream. This is what `dovi_tool` handles.
 
+### Visual Quality: FEL P7 vs Converted P8
+
+In a Profile 7 FEL source, the enhancement layer contains two distinct things:
+
+1. **The RPU** — per-frame dynamic metadata (brightness targets, colour volume, tone-mapping curves). **Fully preserved** in the P8 conversion.
+2. **Luma/chroma mapping coefficients and residual data** — pixel-level corrections applied on top of the base layer by the playback hardware. **Discarded** by `dovi_tool -m 2 convert --discard`.
+
+The luma/chroma residual in a FEL source is designed to be processed by dedicated disc playback hardware (e.g. a Panasonic UB900). The hardware uses it to apply fine per-pixel corrections to the base layer — in theory producing the most accurate representation of the master. When playing a disc on hardware that supports FEL processing, this is the full DV experience as the studio intended.
+
+When converting to P8, the residual is discarded and the display works solely from the base HEVC layer, guided by the preserved RPU.
+
+**In practice, visible differences are negligible for most content**, for several reasons:
+
+- UHD Blu-ray base layers are mastered to very high quality. The FEL residual is a correction on top of an already excellent image, not a replacement for it.
+- The RPU dynamic metadata — the primary driver of DV's visual advantage over standard HDR10 — is fully preserved. The display still receives per-frame tone-mapping instructions and can adjust highlights, shadows, and colour volume accordingly.
+- Streaming devices (Apple TV, Chromecast, smart TV apps) have never had access to FEL processing. A streaming service delivering DV content sends Profile 8 — the same format produced by this toolkit.
+- The theoretical advantage of FEL residual is most visible in scenes with very bright highlights or highly saturated colours where the base layer may clip. Even in these cases the difference is subtle and only visible on high-quality reference displays in controlled conditions.
+
+The bottom line: the converted P8 file delivers the same DV experience as streaming-service content. The FEL residual that is discarded was only ever accessible via the disc player's dedicated DV hardware, and that hardware path is bypassed entirely when ripping to a file.
+
 ---
 
 ## Tools and Commands
