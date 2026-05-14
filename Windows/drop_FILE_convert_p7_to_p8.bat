@@ -16,6 +16,8 @@ set "RPU=%WORKDIR%\rpu.bin"
 set "BL_WITH_RPU=%WORKDIR%\bl_rpu.hevc"
 set "HEVC=%WORKDIR%\source.hevc"
 set "HEVC_P8=%WORKDIR%\output_p8.hevc"
+set "TMP_JSON=%~dp0tmp_probe.json"
+set "TMP_DVLINE=%~dp0tmp_dvline.txt"
 
 echo.
 echo  Dolby Vision Profile 7 ^> Profile 8 Converter
@@ -29,7 +31,7 @@ if "%SOURCE%"=="" (
     exit /b 1
 )
 
-powershell -NoProfile -Command "if (Test-Path -LiteralPath $env:SOURCE -PathType Container) { exit 0 } else { exit 1 }"
+dir "!SOURCE!\." >nul 2>&1
 if not errorlevel 1 (
     echo  ERROR: A folder was dropped onto this script.
     echo  This script converts a single video file.
@@ -44,11 +46,37 @@ if not exist "%SOURCE%" (
     exit /b 1
 )
 
+echo  Checking Dolby Vision profile...
+set PROFILE=
+ffprobe -v quiet -show_streams -of json "%SOURCE%" > "%TMP_JSON%" 2>&1
+findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
+for /f "usebackq delims=" %%I in ("%TMP_DVLINE%") do (
+    set "LINE=%%I"
+    set "LINE=!LINE: =!"
+    set "LINE=!LINE:"=!"
+    set "LINE=!LINE:,=!"
+    for /f "tokens=2 delims=:" %%J in ("!LINE!") do set "PROFILE=%%J"
+)
+if exist "%TMP_DVLINE%" del "%TMP_DVLINE%"
+if exist "%TMP_JSON%" del "%TMP_JSON%"
+
+if "!PROFILE!"=="7" (
+    echo  Profile 7 detected.
+) else if "!PROFILE!"=="" (
+    echo  No Dolby Vision profile detected - nothing to convert.
+    pause
+    exit /b 0
+) else (
+    echo  Profile !PROFILE! detected - already converted or not a P7 file.
+    pause
+    exit /b 0
+)
+echo.
 echo  WARNING: The original source file will be DELETED after successful conversion.
 echo  The converted file will replace it with the same filename.
 echo  If you need to keep the original, cancel now and make a backup first.
 echo.
-set /p CONFIRM=  Type YES to continue or press Ctrl+C to cancel: 
+set /p CONFIRM=  Type YES to continue or press Ctrl+C to cancel:
 if /i "!CONFIRM!" neq "YES" (
     echo  Cancelled.
     pause

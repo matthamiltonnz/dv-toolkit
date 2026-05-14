@@ -26,7 +26,7 @@ if "%SCANDIR%"=="" (
     exit /b 1
 )
 
-powershell -NoProfile -Command "if (Test-Path -LiteralPath $env:SCANDIR -PathType Container) { exit 0 } else { exit 1 }"
+dir "!SCANDIR!\." >nul 2>&1
 if errorlevel 1 (
     echo  ERROR: A file was dropped onto this script, or the folder was not found.
     echo  This script scans a folder. Please drop a folder onto it.
@@ -38,11 +38,11 @@ rem -----------------------------------------------
 rem  Check for existing report and prompt user
 rem -----------------------------------------------
 set "APPEND=0"
-set "PREV_COUNT=0"
-set "PREV_P7=0"
-set "PREV_P8=0"
-set "PREV_OTHER=0"
-set "PREV_FOLDERS="
+set PREV_COUNT=0
+set PREV_P7=0
+set PREV_P8=0
+set PREV_OTHER=0
+set PREV_FOLDERS=
 
 if exist "%TMP_STATE%" (
     echo  An existing scan session was found.
@@ -65,19 +65,19 @@ if exist "%TMP_STATE%" (
 
 if "!APPEND!"=="0" (
     rem Start fresh - clear all temp files
-    type nul > "%TMP_P7%"
-    type nul > "%TMP_P8%"
-    type nul > "%TMP_OTHER%"
-    set "PREV_COUNT=0"
-    set "PREV_P7=0"
-    set "PREV_P8=0"
-    set "PREV_OTHER=0"
-    set "PREV_FOLDERS="
+    copy nul "%TMP_P7%" /y >nul
+    copy nul "%TMP_P8%" /y >nul
+    copy nul "%TMP_OTHER%" /y >nul
+    set PREV_COUNT=0
+    set PREV_P7=0
+    set PREV_P8=0
+    set PREV_OTHER=0
+    set PREV_FOLDERS=
 ) else (
     rem Restore previous file lists if they exist
-    if not exist "%TMP_P7%"    type nul > "%TMP_P7%"
-    if not exist "%TMP_P8%"    type nul > "%TMP_P8%"
-    if not exist "%TMP_OTHER%" type nul > "%TMP_OTHER%"
+    if not exist "%TMP_P7%"    copy nul "%TMP_P7%" /y >nul
+    if not exist "%TMP_P8%"    copy nul "%TMP_P8%" /y >nul
+    if not exist "%TMP_OTHER%" copy nul "%TMP_OTHER%" /y >nul
 )
 
 rem -----------------------------------------------
@@ -96,7 +96,7 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
     set /a COUNT+=1
     echo Checking !COUNT!: %%~nxF
 
-    set "PROFILE="
+    set PROFILE=
     ffprobe -v quiet -show_streams -of json "%%F" > "%TMP_JSON%" 2>&1
 
     findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul

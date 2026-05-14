@@ -22,7 +22,7 @@ if "%SCANDIR%"=="" (
     exit /b 1
 )
 
-powershell -NoProfile -Command "if (Test-Path -LiteralPath $env:SCANDIR -PathType Container) { exit 0 } else { exit 1 }"
+dir "!SCANDIR!\." >nul 2>&1
 if errorlevel 1 (
     echo  ERROR: A file was dropped onto this script, or the folder was not found.
     echo  This script converts all Profile 7 files in a folder. Please drop a folder onto it.
@@ -63,7 +63,7 @@ for /r "%SCANDIR%" %%F in (*.mkv *.mp4 *.ts) do (
     echo.
     echo  [!SCAN_COUNT!] Checking: !FILENAME!
 
-    set "PROFILE="
+    set PROFILE=
     ffprobe -v quiet -show_streams -of json "%%F" > "%TMP_JSON%" 2>&1
     findstr /i "dv_profile" "%TMP_JSON%" > "%TMP_DVLINE%" 2>nul
     for /f "usebackq delims=" %%I in ("%TMP_DVLINE%") do (
