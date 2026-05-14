@@ -171,6 +171,7 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 - **dovi_tool info on MKV** — `dovi_tool info` only works on raw HEVC streams, not MKV containers. Verification step was removed from the conversion scripts for this reason.
 - **batch script ERR handling** — Windows batch `errorlevel` checking is fragile; robocopy uses a bitmask (0-7 = success, 8+ = error) which differs from standard 0/1 convention.
 - **`for /f` double-quote-in-single-quote bug** — Using `for /f "..." %%V in ('command "path with spaces"')` silently fails or produces wrong output when the script folder path contains spaces. The outer single quotes cannot contain unescaped double quotes. Fixed throughout by redirecting command output to a temp file and reading it with `usebackq`: `for /f "usebackq ..." %%V in ("tmpfile.txt")`. All `findstr` and `ffprobe` pipe operations use this pattern.
+- **Empty `set` assignment in cmd.exe** — `set "VAR="` and `set VAR=` (clearing a variable) cause "The syntax of the command is incorrect." inside parenthesised blocks on some Windows configurations, and are unreliable at top level too. The Windows scanner originally had multi-folder session persistence relying on `set PREV_FOLDERS=` to clear between runs — this could not be made reliably work and was removed. The scanner now scans one folder per run with no session state.
 
 ### macOS
 
@@ -217,7 +218,6 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Fixed xcopy for filenames with spaces (robocopy alternative failed) |
 | May 2026 | Added dual-track P7 (BL+EL) detection and handling |
 | May 2026 | Added batch folder converter (Windows) |
-| May 2026 | Added multi-folder scanner with session persistence |
 | May 2026 | Added macOS scanner and compress/remux script |
 | May 2026 | Added remux-only mode to macOS script (matches Windows workflow) |
 | May 2026 | Added audio/subtitle track selection to macOS compressor |
@@ -229,6 +229,7 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Added input validation (file-vs-folder) to all scripts on both platforms |
 | May 2026 | Investigated DoViBaker for FEL preservation — determined not suitable (see below) |
 | May 2026 | Published to GitHub as public repository |
+| May 2026 | Removed multi-folder session persistence from Windows scanner — caused "The syntax of the command is incorrect." on cmd.exe; reverted to single-folder scan per run |
 
 ---
 
@@ -278,7 +279,7 @@ work/
 *.ivf
 *.bin
 
-# Scan session state
+# Temporary probe files
 tmp_*.txt
 tmp_*.json
 
@@ -287,7 +288,7 @@ dv_profile_scan.txt
 batch_convert_log.txt
 ```
 
-The `bin/` folders hold the required executables and must not be committed — they are platform-specific binaries and would make the repository unnecessarily large. The `work/` folders are temporary processing directories. The `tmp_*` files are scan session state.
+The `bin/` folders hold the required executables and must not be committed — they are platform-specific binaries and would make the repository unnecessarily large. The `work/` folders are temporary processing directories. The `tmp_*` files are temporary probe/intermediate files created and deleted during script runs.
 
 ### README note
 
