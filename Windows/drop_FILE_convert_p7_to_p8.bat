@@ -29,7 +29,8 @@ if "%SOURCE%"=="" (
     exit /b 1
 )
 
-if exist "%SOURCE%\" (
+powershell -NoProfile -Command "if (Test-Path -LiteralPath $env:SOURCE -PathType Container) { exit 0 } else { exit 1 }"
+if not errorlevel 1 (
     echo  ERROR: A folder was dropped onto this script.
     echo  This script converts a single video file.
     echo  To convert all files in a folder, use drop_FOLDER_batch_convert_p7_to_p8.bat

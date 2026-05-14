@@ -26,7 +26,8 @@ if "%SCANDIR%"=="" (
     exit /b 1
 )
 
-if not exist "%SCANDIR%\" (
+powershell -NoProfile -Command "if (Test-Path -LiteralPath $env:SCANDIR -PathType Container) { exit 0 } else { exit 1 }"
+if errorlevel 1 (
     echo  ERROR: A file was dropped onto this script, or the folder was not found.
     echo  This script scans a folder. Please drop a folder onto it.
     pause
