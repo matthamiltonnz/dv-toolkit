@@ -1,0 +1,46 @@
+# =============================================================
+#  DV Toolkit — .gitignore
+# =============================================================
+
+# ---- Binary tools ----
+# Platform-specific executables — download separately per platform
+# See README.md / DV_Toolkit.md for download instructions
+Windows/bin/*.exe
+Windows/bin/*.dll
+macOS/bin/dovi_tool
+
+# ---- Processing work folders ----
+# Temporary local copies and intermediate files created during conversion
+windows/work/
+macos/work/
+work/
+
+# ---- Intermediate encoding files ----
+*.hevc
+*.ivf
+*.bin
+
+# ---- Scan session state ----
+# Persist between runs but should not be committed
+tmp_*.txt
+tmp_*.json
+
+# ---- Output reports and logs ----
+dv_profile_scan.txt
+batch_convert_log.txt
+
+# ---- macOS system files ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# ---- Windows system files ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ---- VS Code ----
+.vscode/
+*.code-workspace
