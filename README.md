@@ -66,7 +66,7 @@ Download the following and place the executables in the `windows\bin\` subfolder
 
 #### dovi_tool
 - Download from: **https://github.com/quietvoid/dovi_tool/releases**
-- Download `dowi_tool-2.x.x-x86_64-pc-windows-msvc.zip`
+- Download the latest release for your system (e.g. `dovi_tool-x.x.x-x86_64-pc-windows-msvc.zip` for 64-bit Windows)
 - Extract and copy `dovi_tool.exe` into `windows\bin\`
 
 #### MKVToolNix (mkvmerge + mkvextract)
@@ -169,11 +169,9 @@ brew install ffmpeg mkvtoolnix
 
 ### 3. Install dovi_tool
 
-The latest release is **v2.3.1** with a universal binary supporting both Intel and Apple Silicon.
+Download from: **https://github.com/quietvoid/dovi_tool/releases**
 
-Download from: **https://github.com/quietvoid/dovi_tool/releases/tag/2.3.1**
-
-Download `dovi_tool-2.3.1-universal-macOS.zip`, then install:
+Download the latest release for your system (choose the universal macOS binary if available, otherwise the arm64 build for Apple Silicon or x86_64 for Intel), then install:
 
 ```bash
 # Unzip, make executable, and move to PATH

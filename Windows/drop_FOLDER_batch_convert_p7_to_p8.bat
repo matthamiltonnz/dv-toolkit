@@ -133,13 +133,63 @@ set "BL_WITH_RPU=%WORKDIR%\bl_rpu.hevc"
 set "HEVC=%WORKDIR%\source.hevc"
 set "HEVC_P8=%WORKDIR%\output_p8.hevc"
 
+rem -----------------------------------------------
+rem  Locality check - same drive = hard link, else copy
+rem -----------------------------------------------
+set "SRC_DRIVE=%SOURCE:~0,2%"
+set "WORK_ROOT=%~dp0"
+set "WORK_DRIVE=%WORK_ROOT:~0,2%"
+set "IS_LOCAL=0"
+
+if "!SRC_DRIVE:~0,1!"=="\" (
+    echo  Source is a network path ^(UNC^) - will copy locally.
+) else if /i "!SRC_DRIVE!"=="!WORK_DRIVE!" (
+    echo  Source is on local disk - will hard-link instead of copying.
+    set "IS_LOCAL=1"
+) else (
+    echo  Source is on a different drive - will copy locally.
+)
+
+rem -----------------------------------------------
+rem  Free space check via PowerShell (handles large file sizes)
+rem -----------------------------------------------
+echo  Checking available disk space...
+powershell -NoProfile -Command "[math]::Ceiling((Get-Item '%SOURCE%').Length/1MB)" > "%TEMP%\dv_size.tmp" 2>nul
+set /p FILE_MB=<"%TEMP%\dv_size.tmp"
+del "%TEMP%\dv_size.tmp" 2>nul
+if not defined FILE_MB set FILE_MB=0
+
+powershell -NoProfile -Command "[math]::Floor(([System.IO.DriveInfo]::new('%WORK_DRIVE%')).AvailableFreeSpace/1MB)" > "%TEMP%\dv_free.tmp" 2>nul
+set /p FREE_MB=<"%TEMP%\dv_free.tmp"
+del "%TEMP%\dv_free.tmp" 2>nul
+if not defined FREE_MB set FREE_MB=0
+
+if "!IS_LOCAL!"=="1" (
+    set /a NEEDED_MB=FILE_MB * 2
+) else (
+    set /a NEEDED_MB=FILE_MB * 3
+)
+
+echo  Space check: need !NEEDED_MB! MB, have !FREE_MB! MB free on !WORK_DRIVE!.
+if !FREE_MB! LSS !NEEDED_MB! (
+    echo  ERROR: Insufficient disk space - skipping this file.
+    echo STATUS: SKIPPED ^(insufficient disk space - need !NEEDED_MB! MB, have !FREE_MB! MB free^) >> "%LOGFILE%"
+    exit /b 1
+)
+
 echo  Creating working directory...
 mkdir "%WORKDIR%"
 if errorlevel 1 goto :conv_error
 
-echo  Copying source file locally...
-xcopy /j "%SOURCE%" "%LOCAL_SOURCE%*" /y
-if errorlevel 1 goto :conv_error
+if "!IS_LOCAL!"=="1" (
+    echo  Hard-linking source ^(no copy needed^)...
+    mklink /h "%LOCAL_SOURCE%" "%SOURCE%"
+    if errorlevel 1 goto :conv_error
+) else (
+    echo  Copying source file locally...
+    xcopy /j "%SOURCE%" "%LOCAL_SOURCE%*" /y
+    if errorlevel 1 goto :conv_error
+)
 
 echo  Detecting video tracks...
 set TRACK_COUNT=0
@@ -188,10 +238,16 @@ echo  Renaming original to .bak...
 rename "%SOURCE%" "%FILENAME%.bak"
 if errorlevel 1 goto :conv_error
 
-echo  Copying converted file back...
-xcopy /j "%WORKDIR%\output.mkv" "%SOURCEDIR%%FILENAME%*" /y
-if errorlevel 1 goto :conv_error_after_rename
-del "%WORKDIR%\output.mkv"
+if "!IS_LOCAL!"=="1" (
+    echo  Moving converted file into place...
+    move "%WORKDIR%\output.mkv" "%SOURCEDIR%%FILENAME%"
+    if errorlevel 1 goto :conv_error_after_rename
+) else (
+    echo  Copying converted file back...
+    xcopy /j "%WORKDIR%\output.mkv" "%SOURCEDIR%%FILENAME%*" /y
+    if errorlevel 1 goto :conv_error_after_rename
+    del "%WORKDIR%\output.mkv"
+)
 
 echo  Deleting original .bak...
 del "%SOURCE%.bak"
