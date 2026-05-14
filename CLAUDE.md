@@ -115,11 +115,14 @@ for s in data.get('streams', []):
             print(sd['dv_profile'])
 ```
 
-Windows parse (used in bat scripts — findstr + string manipulation):
+Windows parse (used in bat scripts — findstr to temp file, then string manipulation):
 ```bat
 ffprobe -v quiet -show_streams -of json "file.mkv" > tmp.json
-findstr /i "dv_profile" tmp.json
-# Parse value by stripping spaces, quotes, commas and splitting on :
+findstr /i "dv_profile" tmp.json > tmp_dvline.txt
+rem Parse value by stripping spaces, quotes, commas and splitting on :
+rem NOTE: do NOT use for /f ('findstr ... "path"') — double quotes inside
+rem single-quoted for /f commands fail when the script folder has spaces.
+rem Always redirect findstr output to a temp file and read with usebackq.
 ```
 
 ### ffmpeg — VideoToolbox HEVC Encoding (macOS)
@@ -167,11 +170,12 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 - **xcopy progress** — Windows xcopy shows a file count rather than a percentage. No clean alternative without third-party tools since robocopy doesn't handle quoted filenames with spaces reliably.
 - **dovi_tool info on MKV** — `dovi_tool info` only works on raw HEVC streams, not MKV containers. Verification step was removed from the conversion scripts for this reason.
 - **batch script ERR handling** — Windows batch `errorlevel` checking is fragile; robocopy uses a bitmask (0-7 = success, 8+ = error) which differs from standard 0/1 convention.
+- **`for /f` double-quote-in-single-quote bug** — Using `for /f "..." %%V in ('command "path with spaces"')` silently fails or produces wrong output when the script folder path contains spaces. The outer single quotes cannot contain unescaped double quotes. Fixed throughout by redirecting command output to a temp file and reading it with `usebackq`: `for /f "usebackq ..." %%V in ("tmpfile.txt")`. All `findstr` and `ffprobe` pipe operations use this pattern.
 
 ### macOS
 
 - **`declare -a` arrays in bash** — macOS ships with bash 3.2 (due to GPL licensing). The `declare -a` array syntax used for track selection works in bash 3.2 but `((count++))` can trigger ERR trap on zero result. Scripts use `|| true` to suppress this.
-- **Bash `^^` uppercase operator** — requires bash 4.0+. If users have not installed bash via Homebrew, `${VAR^^}` may fail. Consider replacing with `tr '[:lower:]' '[:upper:]'` for robustness.
+- **Bash `^^` uppercase operator** *(fixed)* — `${VAR^^}` requires bash 4.0+. macOS ships bash 3.2. All scripts now use explicit `[[ "$VAR" == "Y" ]] || [[ "$VAR" == "y" ]]` comparisons instead.
 - **rsync progress** — `rsync --progress` shows per-file transfer progress. For very large files this works well; for many small files the output is verbose.
 - **Gatekeeper** — dovi_tool binary requires `xattr -d com.apple.quarantine` after download. This is a one-time step but easy to forget.
 
@@ -194,7 +198,6 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 
 ## Future Development Ideas
 
-- **Batch macOS converter** — shell script equivalent of `batch_convert_drop_FILE_convert_p7_to_p8.bat` that recurses a folder and converts all P7 files
 - **Windows compression** — if user switches to NVIDIA GPU, NVENC on RTX 3000+ supports DV metadata passthrough; a Windows compress script using ffmpeg + hevc_nvenc would be straightforward
 - **AV1 / Profile 10 pipeline** — revisit when Apple TV supports hardware AV1 decode; SVT-AV1 + dovi_tool RPU injection is the correct approach
 - **Infuse / Jellyfin verification** — automated check that converted P8 files are detected correctly as DV by the target player
@@ -213,12 +216,19 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Fixed dovi_tool -m flag position (must precede subcommand) |
 | May 2026 | Fixed xcopy for filenames with spaces (robocopy alternative failed) |
 | May 2026 | Added dual-track P7 (BL+EL) detection and handling |
-| May 2026 | Added batch folder converter |
+| May 2026 | Added batch folder converter (Windows) |
 | May 2026 | Added multi-folder scanner with session persistence |
 | May 2026 | Added macOS scanner and compress/remux script |
 | May 2026 | Added remux-only mode to macOS script (matches Windows workflow) |
 | May 2026 | Added audio/subtitle track selection to macOS compressor |
 | May 2026 | Added AV1 / SVT-AV1 mode with native DV Profile 10 support |
+| May 2026 | Added macOS batch folder converter (drop_FOLDER_batch_convert_p7_to_p8.sh) |
+| May 2026 | Added local disk detection and free space check to both macOS and Windows batch converters |
+| May 2026 | Fixed Windows `for /f` quoting bug affecting all scripts when script folder path has spaces |
+| May 2026 | Fixed bash 3.2 `^^` uppercase operator — replaced with explicit Y/y comparisons |
+| May 2026 | Added input validation (file-vs-folder) to all scripts on both platforms |
+| May 2026 | Investigated DoViBaker for FEL preservation — determined not suitable (see below) |
+| May 2026 | Published to GitHub as public repository |
 
 ---
 
@@ -228,10 +238,11 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 
 ```
 /
-  README.md                              ← copy of DV_Toolkit.md
+  README.md
   CLAUDE.md                              ← this file (dev notes)
   .gitignore
-  windows/
+  .gitattributes                         ← enforces CRLF for *.bat, LF for *.sh
+  Windows/
     bin/                               ← gitignored, not committed to GitHub
       ffmpeg.exe
       ffprobe.exe
@@ -241,23 +252,25 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
     drop_FILE_convert_p7_to_p8.bat
     drop_FOLDER_batch_convert_p7_to_p8.bat
     drop_FOLDER_scan_dv_profiles.bat
-  macos/
-    bin/                               ← gitignored, place dovi_tool here if not in /usr/local/bin
+  macOS/
+    bin/                               ← gitignored, place dovi_tool here if not in PATH
       dovi_tool                          ← optional, can use system PATH instead
     drop_FILE_convert_compress.sh
+    drop_FOLDER_batch_convert_p7_to_p8.sh
     drop_FOLDER_scan_dv_profiles.sh
+    install.sh
 ```
 
 ### Recommended .gitignore
 
 ```
 # Binary tools — not committed to GitHub
-windows/bin/
-macos/bin/
+Windows/bin/
+macOS/bin/
 
 # Processing work folders
-windows/work/
-macos/work/
+Windows/work/
+macOS/work/
 work/
 
 # Intermediate files
@@ -287,6 +300,23 @@ All scripts are prefixed with `drop_FILE_` or `drop_FOLDER_` to make the drag-an
 ### Continuation prompt for Claude
 
 To continue development in a new Claude conversation, paste the contents of this `CLAUDE.md` file at the start of the conversation along with any specific question or task. Claude will have full context of the project, tools, known issues, and decisions made.
+
+---
+
+## Investigated Approaches: DoViBaker
+
+[DoViBaker](https://github.com/erazortt/DoViBaker) is an AviSynth+ plugin that processes Profile 7 FEL sources by baking the BL, EL, and RPU together into a single 16-bit RGB PQ output. This is the only known tool that actually applies the FEL luma/chroma residual to produce a corrected image — preserving the full FEL quality that disc players provide.
+
+**Why it was investigated:** The question was whether DoViBaker could be used as a pre-processing step to preserve FEL quality in the P8 conversion pipeline.
+
+**Why it was not integrated:**
+
+1. **Re-encoding required** — DoViBaker outputs a processed frame sequence that must then be re-encoded to HEVC. This is a lossy step; there is no way to produce a lossless P8 file from a FEL-processed source without a significant quality cost from the encode.
+2. **AviSynth-only** — DoViBaker is a plugin for AviSynth+ (Windows), not a standalone tool. It cannot be called from a bash script or a Windows batch file without a full AviSynth scripting environment.
+3. **Marginal quality gain** — As documented in the Visual Quality section above, the FEL residual is a subtle correction on an already high-quality base layer. Re-encoding introduces artefacts that would likely exceed any quality gain from the residual, particularly at practical bitrates for home media servers.
+4. **Out of scope** — The toolkit goal is a fast, lossless remux (no re-encode). DoViBaker turns this into a full transcode pipeline.
+
+**Conclusion:** DoViBaker is the right tool if the goal is a reference-quality archival encode using the full FEL signal and a high-bitrate encode is acceptable. It is not suitable for this toolkit's remux-only workflow.
 
 ---
 
