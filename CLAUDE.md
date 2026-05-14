@@ -9,11 +9,12 @@ This file documents the project background, technical decisions, known limitatio
 Developed through an iterative Claude conversation (May 2026) to solve a specific home media workflow problem: UHD Blu-ray MKV rips from MakeMKV contain Dolby Vision Profile 7 which is not playable on Apple TV 4K via Infuse, Jellyfin, or Plex. The goal was a drag-and-drop toolkit requiring no technical knowledge to operate.
 
 **Hardware context:**
-- NAS: QNAP TS-853 Pro (1GbE, no PCIe expansion) serving files over the network
+- NAS: QNAP TS-853 Pro and QNAP TS-459, both serving media files over the network
+- Media server: Jellyfin installed on Home Assistant, running on an Intel N100-based mini PC
 - Windows PC: Ryzen 7 7700, AMD RX 9070 XT (RDNA 4)
-- MacBook Air: M5 (10-core CPU, 8-core GPU, 16GB) — primary compression machine
-- Playback: Apple TV 4K (2022, A15) via Infuse → TCL C645 (DV-capable) and BenQ TK800 projector (HDR10 only)
-- Physical disc player: Panasonic UB820 (handles P7 FEL natively from disc)
+- MacBook Air: M5 (10-core CPU, 8-core GPU, 16GB) — macOS scripts are experimental and untested
+- Playback devices: Apple TV 4K (2022, A15), Jellyfin app on TCL C645 TV (DV-capable), Xiaomi Google TV box, 4× Chromecast with Google TV, BenQ TK800 projector (HDR10 only)
+- Physical disc player: Panasonic DMP-UB900 (does not support Dolby Vision — hence the rip and convert workflow for streaming device playback)
 
 ---
 

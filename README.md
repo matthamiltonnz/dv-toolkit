@@ -399,8 +399,8 @@ Mirrors the Windows scanner. Drag a folder onto the Automator wrapper, or run fr
 
 ## Workflow Notes
 
-- **Network performance:** All scripts copy the source file to a local work folder before processing. This avoids slow network read/write during every intermediate step — particularly important when source files are on a NAS.
-- **Disk space:** Intermediate files are deleted as soon as they are no longer needed to minimise peak disk usage. See disk space notes in the setup sections above.
+- **Network performance:** When the source file is on a network share (NAS), scripts copy it to a local work folder before processing. This avoids slow network read/write during every intermediate step. If the source file is already on the same local disk as the scripts, a hard link is created instead — no data is copied and no extra space is used for the source.
+- **Disk space:** Intermediate files are deleted as soon as they are no longer needed to minimise peak disk usage. A free space check runs before each file is processed — if there is insufficient space, that file is skipped and logged, and the batch continues. See disk space notes in the setup sections above.
 - **Error handling:** On failure, work folders are preserved for investigation. The original file is never deleted until the conversion is fully complete and the output has been successfully copied back.
 - **Profile 7 dual-track:** Some disc rips store the Dolby Vision enhancement layer as a separate video track. All scripts detect this automatically and handle both single and dual-track sources without any configuration.
 - **HDR10 fallback:** Profile 8 files embed DV metadata alongside a standard HDR10 base layer. Devices that don't support Dolby Vision play the HDR10 layer automatically — no separate HDR10 file is needed.
