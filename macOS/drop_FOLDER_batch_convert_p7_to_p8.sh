@@ -33,6 +33,12 @@ hdr()  { echo -e "\n${BOLD}  $1${NC}"; echo "  $(echo "$1" | sed 's/./-/g')"; }
 SCRIPTDIR="$(cd "$(dirname "$0")" && pwd)"
 LOGFILE="$SCRIPTDIR/batch_convert_log.txt"
 
+# ---- Disk helpers ----
+get_device()  { stat -f %d "$1" 2>/dev/null; }
+get_free_kb() { df -k "$1" | awk 'NR==2{print $4}'; }
+get_size_kb() { du -sk "$1" | awk '{print $1}'; }
+fmt_gb()      { awk "BEGIN{printf \"%.1f GB\", $1/1048576}"; }
+
 # ---- Tool resolution ----
 resolve_tool() {
     if command -v "$1" &>/dev/null; then echo "$1"
@@ -117,11 +123,43 @@ convert_file() {
     echo "" >> "$LOGFILE"
     echo "CONVERTING: $SOURCE" >> "$LOGFILE"
 
+    # ---- Disk locality and free space check ----
+    local SOURCE_DEV WORK_DEV FILE_KB FREE_KB NEEDED_KB IS_LOCAL
+    SOURCE_DEV=$(get_device "$SOURCE")
+    WORK_DEV=$(get_device "$SCRIPTDIR")
+    FILE_KB=$(get_size_kb "$SOURCE")
+
+    if [ "$SOURCE_DEV" = "$WORK_DEV" ]; then
+        IS_LOCAL=1
+        NEEDED_KB=$((FILE_KB * 2))
+        log "Source is on local disk — will hard-link instead of copying ($(fmt_gb $FILE_KB))."
+    else
+        IS_LOCAL=0
+        NEEDED_KB=$((FILE_KB * 3))
+        log "Source is on a separate volume — will copy locally first ($(fmt_gb $FILE_KB))."
+    fi
+
+    FREE_KB=$(get_free_kb "$SCRIPTDIR")
+    log "Space check: need $(fmt_gb $NEEDED_KB), available $(fmt_gb $FREE_KB)."
+    if [ "$FREE_KB" -lt "$NEEDED_KB" ]; then
+        err "Insufficient disk space — skipping."
+        err "  Need $(fmt_gb $NEEDED_KB), only $(fmt_gb $FREE_KB) free on work disk."
+        echo "STATUS: SKIPPED (insufficient disk space — need $(fmt_gb $NEEDED_KB), have $(fmt_gb $FREE_KB))" >> "$LOGFILE"
+        return 1
+    fi
+
     log "Creating working directory..."
     mkdir -p "$WORKDIR"
 
-    log "Copying source file locally (rsync)..."
-    rsync --progress "$SOURCE" "$LOCAL_SOURCE"
+    if [ "$IS_LOCAL" = "1" ]; then
+        log "Hard-linking source (no copy needed)..."
+        ln "$SOURCE" "$LOCAL_SOURCE"
+        ok "Linked."
+    else
+        log "Copying source file locally (rsync)..."
+        rsync --progress "$SOURCE" "$LOCAL_SOURCE"
+        ok "Copied."
+    fi
 
     hdr "STEP 2 — Track Inspection"
     local PROBE
@@ -182,10 +220,15 @@ convert_file() {
     mv "$SOURCE" "${SOURCE}.bak"
     ok "Original renamed."
 
-    log "Copying converted file back..."
-    rsync --progress "$OUTPUT_MKV" "$FINAL"
-    ok "File copied."
-    rm "$OUTPUT_MKV"
+    if [ "$IS_LOCAL" = "1" ]; then
+        log "Moving converted file into place..."
+        mv "$OUTPUT_MKV" "$FINAL"
+    else
+        log "Copying converted file back..."
+        rsync --progress "$OUTPUT_MKV" "$FINAL"
+        rm "$OUTPUT_MKV"
+    fi
+    ok "File in place."
 
     log "Deleting original .bak..."
     rm "${SOURCE}.bak"
