@@ -225,10 +225,15 @@ else
         echo "    [2] AV1  — re-encode with SVT-AV1 (CPU), DV Profile 10 output"
         echo "               ⚠ Experimental — requires compatible ffmpeg build"
         echo "               ⚠ No hardware AV1 decode on current Apple TV hardware"
+        echo "    [3] Exit — do nothing"
         echo ""
-        read -r -p "  Choice [1/2]: " MODE_CHOICE
+        read -r -p "  Choice [1/2/3]: " MODE_CHOICE
 
         case "$MODE_CHOICE" in
+            3) echo "  Nothing to do."
+               read -r -p "  Press Enter to close..."
+               exit 0
+               ;;
             2) AV1_MODE=1
                echo ""
                echo "  AV1 CRF reference (lower = better quality, larger file):"
