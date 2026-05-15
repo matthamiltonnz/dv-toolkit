@@ -204,7 +204,7 @@ convert_file() {
 
     hdr "STEP 3 — DV Metadata Extraction"
 
-    if [ "$VIDEO_TRACKS" -ge 2 ]; then
+    if [ "$VIDEO_TRACKS" -ge 2 ] && [ "$DV_PROFILE" == "7" ]; then
         log "Dual-track source (P7 with EL) — extracting base and enhancement layers..."
         "$FFMPEG" -y -i "$LOCAL_SOURCE" -map 0:v:0 -c:v copy -an -f hevc "$BL" 2>/dev/null
         ok "Base layer extracted."
