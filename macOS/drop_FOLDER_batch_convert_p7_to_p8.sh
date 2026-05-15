@@ -31,7 +31,7 @@ err()  { echo -e "${RED}  ✗ $1${NC}"; }
 hdr()  { echo -e "\n${BOLD}  $1${NC}"; echo "  $(echo "$1" | sed 's/./-/g')"; }
 
 SCRIPTDIR="$(cd "$(dirname "$0")" && pwd)"
-LOGFILE="$SCRIPTDIR/batch_convert_log.txt"
+LOGFILE="$HOME/Desktop/batch_convert_log.txt"
 
 # ---- Disk helpers ----
 get_device()  { stat -f %d "$1" 2>/dev/null; }
@@ -83,6 +83,14 @@ echo "  Folder: $SCANDIR"
 echo "  Log:    $LOGFILE"
 echo ""
 
+# ---- OneDrive / cloud storage notice ----
+if echo "$SCRIPTDIR" | grep -qi "onedrive\|CloudStorage\|iCloud Drive"; then
+    warn "Script is running from a cloud-synced folder."
+    warn "Temporary conversion files will be written to /tmp/dv-toolkit/"
+    warn "to avoid syncing large intermediate files to the cloud."
+    echo ""
+fi
+
 echo -e "${YELLOW}  ⚠ WARNING: ALL Profile 7 files found in this folder will be converted.${NC}"
 echo "  Original files will be DELETED after successful conversion."
 echo "  Converted files will replace originals with the same filename."
@@ -117,7 +125,7 @@ convert_file() {
     FILENAME="$(basename "$SOURCE")"
     local NAME="${FILENAME%.mkv}"
 
-    local WORKDIR="$SCRIPTDIR/work/$NAME"
+    local WORKDIR="/tmp/dv-toolkit/$NAME"
     local LOCAL_SOURCE="$WORKDIR/$FILENAME"
     local BL="$WORKDIR/bl.hevc"
     local EL="$WORKDIR/el.hevc"
