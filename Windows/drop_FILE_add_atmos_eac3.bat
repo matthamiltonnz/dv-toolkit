@@ -9,6 +9,7 @@ set "SOURCEDIR=%~dp1"
 set "NAME=%~n1"
 set "FILENAME=%~nx1"
 set "WORKDIR=%~dp0work\%NAME%_atmos"
+set "LOCAL_SOURCE=%WORKDIR%\%FILENAME%"
 set "TMP_JSON=%~dp0tmp_probe.json"
 set "TMP_TRACKS=%~dp0tmp_atmos_tracks.txt"
 set "TMP_PS=%~dp0tmp_mkvmerge.ps1"
@@ -120,7 +121,18 @@ pause
 
 if not exist "%WORKDIR%" mkdir "%WORKDIR%"
 
-rem ---- Convert each TrueHD Atmos track ----
+rem ---- Copy source locally ----
+echo.
+echo  Copying source file locally...
+xcopy /j "%SOURCE%" "%LOCAL_SOURCE%*" /y
+if errorlevel 1 (
+    echo  ERROR: Copy failed.
+    pause
+    exit /b 1
+)
+echo  Copy complete.
+
+rem ---- Convert each TrueHD track ----
 echo.
 echo  Converting...
 echo.
@@ -145,7 +157,7 @@ for /f "usebackq tokens=1,2,3,4,5 delims=|" %%A in ("%TMP_TRACKS%") do (
     ) else (
         echo  Track !TRACK_NUM!: !ORIG_TITLE! [stream !AUDIO_IDX!, size saving]...
     )
-    ffmpeg -y -i "%SOURCE%" -map 0:a:!AUDIO_IDX! -c:a eac3 -b:a 768k "!EAC3_FILE!" 2>nul
+    ffmpeg -y -i "%LOCAL_SOURCE%" -map 0:a:!AUDIO_IDX! -c:a eac3 -b:a 768k "!EAC3_FILE!" 2>nul
     if errorlevel 1 (
         echo  ERROR: Conversion failed for track !TRACK_NUM!.
         if exist "%TMP_TRACKS%" del "%TMP_TRACKS%"
@@ -174,7 +186,7 @@ echo $a = @('-o', '%OUTPUT_MKV%')>> "%TMP_PS%"
 echo if ($replaceTrueHD -eq 1 -and $excludeIdxs.Count -gt 0) {>> "%TMP_PS%"
 echo     $a += '--audio-tracks', ($excludeIdxs -join ',')>> "%TMP_PS%"
 echo }>> "%TMP_PS%"
-echo $a += '%SOURCE%'>> "%TMP_PS%"
+echo $a += '%LOCAL_SOURCE%'>> "%TMP_PS%"
 echo foreach ($t in $tracks) {>> "%TMP_PS%"
 echo     $p = $t -split '\|', 5>> "%TMP_PS%"
 echo     $isAtmos = $p[3] -eq '1'>> "%TMP_PS%"
@@ -197,6 +209,7 @@ if %MERGE_RESULT% NEQ 0 (
     exit /b 1
 )
 echo  Remux complete.
+if exist "%LOCAL_SOURCE%" del "%LOCAL_SOURCE%"
 
 rem ---- Move output into place ----
 echo.
