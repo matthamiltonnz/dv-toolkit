@@ -419,6 +419,7 @@ echo "  Audio tracks:"
 AUDIO_COUNT=0
 declare -a AUDIO_INFO
 declare -a AUDIO_IS_ATMOS
+declare -a AUDIO_IS_TRUEHD
 declare -a AUDIO_TITLE_ARR
 declare -a AUDIO_LANG_ARR
 while IFS= read -r line; do
@@ -426,14 +427,21 @@ while IFS= read -r line; do
     CODEC=$(echo "$line" | grep -o '"codec_name": "[^"]*"' | head -1 | cut -d'"' -f4)
     LANG=$(echo "$line" | grep -o '"language": "[^"]*"' | cut -d'"' -f4)
     TITLE=$(echo "$line" | grep -o '"title": "[^"]*"' | cut -d'"' -f4)
+    PROFILE=$(echo "$line" | grep -o '"profile": "[^"]*"' | cut -d'"' -f4)
     CHANNELS=$(echo "$line" | grep -o '"channels": [0-9]*' | awk '{print $2}')
     echo "    [$AUDIO_COUNT] Track $INDEX — $CODEC ${CHANNELS}ch  lang:${LANG:-unknown}  ${TITLE}"
     AUDIO_INFO[$AUDIO_COUNT]="$INDEX"
     AUDIO_TITLE_ARR[$AUDIO_COUNT]="$TITLE"
     AUDIO_LANG_ARR[$AUDIO_COUNT]="${LANG:-und}"
-    if [[ "$CODEC" == "truehd" ]] && echo "$TITLE" | grep -qi "atmos"; then
-        AUDIO_IS_ATMOS[$AUDIO_COUNT]=1
+    if [[ "$CODEC" == "truehd" ]]; then
+        AUDIO_IS_TRUEHD[$AUDIO_COUNT]=1
+        if echo "$PROFILE $TITLE" | grep -qi "atmos"; then
+            AUDIO_IS_ATMOS[$AUDIO_COUNT]=1
+        else
+            AUDIO_IS_ATMOS[$AUDIO_COUNT]=0
+        fi
     else
+        AUDIO_IS_TRUEHD[$AUDIO_COUNT]=0
         AUDIO_IS_ATMOS[$AUDIO_COUNT]=0
     fi
     ((AUDIO_COUNT++)) || true
@@ -549,8 +557,46 @@ if [ "$REMUX_ONLY" != "1" ] && [ "$AUDIO_COUNT" -gt 0 ]; then
     fi
 fi
 
-# ---- Rebuild audio args excluding TrueHD Atmos if converting ----
-if [ "$CONVERT_ATMOS" == "1" ]; then
+# ---- Non-Atmos TrueHD offer (size saving only) ----
+declare -a NON_ATMOS_TRUEHD_TO_CONVERT
+CONVERT_NON_ATMOS=0
+
+if [ "$REMUX_ONLY" != "1" ] && [ "$AUDIO_COUNT" -gt 0 ]; then
+    N=0
+    while [ $N -lt $AUDIO_COUNT ]; do
+        INCLUDE=0
+        if [ -z "$AUDIO_CHOICE" ]; then
+            INCLUDE=1
+        else
+            for CHOSEN in $AUDIO_CHOICE; do
+                [ "$CHOSEN" == "$N" ] && INCLUDE=1
+            done
+        fi
+        if [ "$INCLUDE" == "1" ] && [ "${AUDIO_IS_TRUEHD[$N]}" == "1" ] && [ "${AUDIO_IS_ATMOS[$N]}" != "1" ]; then
+            NON_ATMOS_TRUEHD_TO_CONVERT+=("$N")
+        fi
+        ((N++)) || true
+    done
+
+    if [ "${#NON_ATMOS_TRUEHD_TO_CONVERT[@]}" -gt 0 ]; then
+        echo ""
+        echo "  TrueHD track(s) without Atmos detected:"
+        for N in "${NON_ATMOS_TRUEHD_TO_CONVERT[@]}"; do
+            echo "    [$N] ${AUDIO_TITLE_ARR[$N]} (${AUDIO_LANG_ARR[$N]})"
+        done
+        echo ""
+        echo "  Converting to EAC3 at 768 kbps saves ~2–3 GB per 2-hour film."
+        warn "This is lossy — purely a size saving, not a compatibility issue."
+        echo ""
+        read -r -p "  Convert to EAC3 for size saving? [y/N]: " NON_ATMOS_CONV
+        if [[ "$NON_ATMOS_CONV" == "y" || "$NON_ATMOS_CONV" == "Y" ]]; then
+            CONVERT_NON_ATMOS=1
+        fi
+    fi
+fi
+
+# ---- Rebuild audio args excluding tracks being converted to EAC3 ----
+if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
     KEEP_AUDIO_TRACKS=""
     N=0
     while [ $N -lt $AUDIO_COUNT ]; do
@@ -562,7 +608,10 @@ if [ "$CONVERT_ATMOS" == "1" ]; then
                 [ "$CHOSEN" == "$N" ] && INCLUDE=1
             done
         fi
-        if [ "$INCLUDE" == "1" ] && [ "${AUDIO_IS_ATMOS[$N]}" != "1" ]; then
+        EXCLUDE=0
+        [ "${AUDIO_IS_ATMOS[$N]}" == "1" ] && [ "$CONVERT_ATMOS" == "1" ] && EXCLUDE=1
+        [ "${AUDIO_IS_TRUEHD[$N]}" == "1" ] && [ "${AUDIO_IS_ATMOS[$N]}" != "1" ] && [ "$CONVERT_NON_ATMOS" == "1" ] && EXCLUDE=1
+        if [ "$INCLUDE" == "1" ] && [ "$EXCLUDE" != "1" ]; then
             KEEP_AUDIO_TRACKS="${KEEP_AUDIO_TRACKS}${AUDIO_INFO[$N]},"
         fi
         ((N++)) || true
@@ -574,11 +623,11 @@ if [ "$CONVERT_ATMOS" == "1" ]; then
     fi
 fi
 
-# ---- Convert TrueHD Atmos to EAC3 if requested ----
-if [ "$CONVERT_ATMOS" == "1" ]; then
-    hdr "STEP 3b — TrueHD Atmos Conversion"
+# ---- Convert TrueHD tracks to EAC3 if requested ----
+if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
+    hdr "STEP 3b — TrueHD Conversion"
     for N in "${ATMOS_TRACKS_TO_CONVERT[@]}"; do
-        EAC3_FILE="$WORKDIR/atmos_${N}.eac3"
+        EAC3_FILE="$WORKDIR/truehd_${N}.eac3"
         TITLE="${AUDIO_TITLE_ARR[$N]}"
         LANG="${AUDIO_LANG_ARR[$N]}"
         if echo "$TITLE" | grep -qi "TrueHD"; then
@@ -586,7 +635,21 @@ if [ "$CONVERT_ATMOS" == "1" ]; then
         else
             NEW_TITLE="${TITLE} EAC3"
         fi
-        log "Converting: $TITLE → EAC3 at 768 kbps..."
+        log "Converting (Atmos): $TITLE → EAC3 at 768 kbps..."
+        "$FFMPEG" -y -i "$LOCAL_SOURCE" -map "0:a:${N}" -c:a eac3 -b:a 768k "$EAC3_FILE" 2>/dev/null
+        ok "Converted: $NEW_TITLE"
+        EAC3_MERGE_ARGS+=(--language "0:${LANG}" --track-name "0:${NEW_TITLE}" "$EAC3_FILE")
+    done
+    for N in "${NON_ATMOS_TRUEHD_TO_CONVERT[@]}"; do
+        EAC3_FILE="$WORKDIR/truehd_${N}.eac3"
+        TITLE="${AUDIO_TITLE_ARR[$N]}"
+        LANG="${AUDIO_LANG_ARR[$N]}"
+        if echo "$TITLE" | grep -qi "TrueHD"; then
+            NEW_TITLE=$(echo "$TITLE" | sed 's/TrueHD/EAC3/g')
+        else
+            NEW_TITLE="${TITLE} EAC3"
+        fi
+        log "Converting (size saving): $TITLE → EAC3 at 768 kbps..."
         "$FFMPEG" -y -i "$LOCAL_SOURCE" -map "0:a:${N}" -c:a eac3 -b:a 768k "$EAC3_FILE" 2>/dev/null
         ok "Converted: $NEW_TITLE"
         EAC3_MERGE_ARGS+=(--language "0:${LANG}" --track-name "0:${NEW_TITLE}" "$EAC3_FILE")

@@ -103,9 +103,11 @@ if echo "$SCRIPTDIR" | grep -qi "onedrive\|CloudStorage\|iCloud Drive"; then
     echo ""
 fi
 
-hdr "STEP 1 — Detecting TrueHD Atmos Tracks"
+hdr "STEP 1 — Detecting TrueHD Tracks"
 mkdir -p "$WORKDIR"
 
+# Output all TrueHD tracks; field 5 is 1 for Atmos, 0 for non-Atmos
+# Atmos detection: ffprobe profile field (codec-level, most reliable) or title tag fallback
 "$FFPROBE" -v quiet -show_streams -of json "$SOURCE" | \
     python3 -c "
 import json, sys
@@ -117,48 +119,85 @@ for s in data.get('streams', []):
             title = s.get('tags', {}).get('title', '')
             lang = s.get('tags', {}).get('language', 'und')
             channels = s.get('channels', 0)
-            if 'atmos' in title.lower():
-                print(str(audio_idx) + '|' + lang + '|' + title + '|' + str(channels))
+            profile = s.get('profile', '')
+            is_atmos = '1' if ('atmos' in profile.lower() or 'atmos' in title.lower()) else '0'
+            print(str(audio_idx) + '|' + lang + '|' + title + '|' + str(channels) + '|' + is_atmos)
         audio_idx += 1
 " > "$ATMOS_TRACKS_FILE"
 
 ATMOS_COUNT=0
-while IFS= read -r _LINE; do
-    ((ATMOS_COUNT++)) || true
+NON_ATMOS_COUNT=0
+while IFS='|' read -r _IDX _LANG _TITLE _CH IS_ATMOS; do
+    if [ "$IS_ATMOS" == "1" ]; then
+        ((ATMOS_COUNT++)) || true
+    else
+        ((NON_ATMOS_COUNT++)) || true
+    fi
 done < "$ATMOS_TRACKS_FILE"
+TRUEHD_COUNT=$((ATMOS_COUNT + NON_ATMOS_COUNT))
 
-if [ "$ATMOS_COUNT" -eq 0 ]; then
-    warn "No TrueHD Atmos tracks found in this file."
-    warn "Tracks must have 'Atmos' in their title tag to be detected."
+if [ "$TRUEHD_COUNT" -eq 0 ]; then
+    warn "No TrueHD tracks found in this file."
     rm -rf "$WORKDIR"
     read -r -p "  Press Enter to close..."
     exit 0
 fi
 
-echo "  Found $ATMOS_COUNT TrueHD Atmos track(s):"
-echo ""
-while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS; do
-    echo "    Audio stream $AUDIO_IDX — $TITLE ($LANG, ${CHANNELS}ch)"
-done < "$ATMOS_TRACKS_FILE"
-echo ""
+# Show what was found and explain conversion intent
+if [ "$ATMOS_COUNT" -gt 0 ]; then
+    echo "  TrueHD Atmos track(s) — will be converted (Apple TV compatibility + size saving):"
+    echo ""
+    while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS; do
+        [ "$IS_ATMOS" == "1" ] && echo "    Audio stream $AUDIO_IDX — $TITLE ($LANG, ${CHANNELS}ch)"
+    done < "$ATMOS_TRACKS_FILE"
+    echo ""
+fi
+
+CONVERT_NON_ATMOS=0
+if [ "$NON_ATMOS_COUNT" -gt 0 ]; then
+    echo "  TrueHD track(s) without Atmos:"
+    echo ""
+    while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS; do
+        [ "$IS_ATMOS" == "0" ] && echo "    Audio stream $AUDIO_IDX — $TITLE ($LANG, ${CHANNELS}ch)"
+    done < "$ATMOS_TRACKS_FILE"
+    echo ""
+    echo "  Converting to EAC3 at 768 kbps saves ~2–3 GB per 2-hour film."
+    warn "This is lossy — purely a size saving, not a compatibility issue."
+    echo ""
+    read -r -p "  Convert non-Atmos TrueHD to EAC3 as well? [y/N]: " NON_ATMOS_CONV
+    if [[ "$NON_ATMOS_CONV" == "y" || "$NON_ATMOS_CONV" == "Y" ]]; then
+        CONVERT_NON_ATMOS=1
+    fi
+    echo ""
+fi
+
+if [ "$ATMOS_COUNT" -eq 0 ] && [ "$CONVERT_NON_ATMOS" == "0" ]; then
+    echo "  Nothing to convert."
+    rm -rf "$WORKDIR"
+    read -r -p "  Press Enter to close..."
+    exit 0
+fi
+
 echo "  Output: ${NAME}_atmos_eac3.mkv"
-echo "  Each TrueHD Atmos track will be converted to EAC3 Atmos and added alongside the original."
-echo "  The original TrueHD track is kept."
+echo "  Original TrueHD tracks are kept alongside the new EAC3 tracks."
 echo ""
 read -r -p "  Press Enter to continue or Ctrl+C to cancel..."
 echo ""
 
-hdr "STEP 2 — Converting to EAC3 Atmos"
+hdr "STEP 2 — Converting to EAC3"
 
 declare -a EAC3_FILES
 declare -a EAC3_LANGS
 declare -a EAC3_TITLES
 EAC3_COUNT=0
 
-TRACK_NUM=0
-while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS; do
-    ((TRACK_NUM++)) || true
-    EAC3_FILE="$WORKDIR/atmos_${AUDIO_IDX}.eac3"
+while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS; do
+    # Skip non-Atmos tracks if user declined
+    if [ "$IS_ATMOS" == "0" ] && [ "$CONVERT_NON_ATMOS" == "0" ]; then
+        continue
+    fi
+
+    EAC3_FILE="$WORKDIR/track_${AUDIO_IDX}.eac3"
 
     if echo "$TITLE" | grep -qi "TrueHD"; then
         NEW_TITLE=$(echo "$TITLE" | sed 's/TrueHD/EAC3/g')
@@ -166,7 +205,11 @@ while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS; do
         NEW_TITLE="${TITLE} EAC3"
     fi
 
-    log "Track $TRACK_NUM of $ATMOS_COUNT: $TITLE → EAC3 at 768 kbps..."
+    if [ "$IS_ATMOS" == "1" ]; then
+        log "Converting (Atmos): $TITLE → EAC3 at 768 kbps..."
+    else
+        log "Converting (size saving): $TITLE → EAC3 at 768 kbps..."
+    fi
     "$FFMPEG" -y -i "$SOURCE" -map "0:a:${AUDIO_IDX}" -c:a eac3 -b:a 768k "$EAC3_FILE" 2>/dev/null
     ok "Converted: $NEW_TITLE"
 

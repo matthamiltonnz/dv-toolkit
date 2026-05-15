@@ -235,6 +235,7 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Windows scanner: added startup cleanup of leftover temp files from old session-based version |
 | May 2026 | Added TrueHD Atmos → EAC3 Atmos converter (drop_FILE_add_atmos_eac3.sh / .bat) — detects Atmos-flagged TrueHD tracks, converts to EAC3 768 kbps, adds alongside originals; output named _atmos_eac3.mkv |
 | May 2026 | Added Atmos conversion option to macOS single-file compress script (HEVC/AV1 modes) — TrueHD replaced by EAC3 in compressed output |
+| May 2026 | Extended Atmos tools to also offer non-Atmos TrueHD → EAC3 conversion (size saving, lossy — clearly flagged); improved Atmos detection to use ffprobe profile field (codec-level) plus title tag fallback |
 | May 2026 | Replaced rsync with cp+progress loop for copy-out step in macOS single-file compress script (all three paths) — consistent with copy-in and batch converter |
 
 ---
@@ -357,7 +358,9 @@ EAC3 (Dolby Digital Plus with JOC extension) is the streaming format for Atmos. 
 
 ### Detection
 
-Atmos-flagged tracks are identified by the presence of 'Atmos' (case-insensitive) in the track's title tag, as set by MakeMKV during ripping. This is the most reliable detection method available without extracting and analysing the raw TrueHD bitstream. A TrueHD 7.1 track without 'Atmos' in its title is not converted — it may or may not contain Atmos data, but the conservative approach is to leave it untouched.
+Atmos tracks are detected using ffprobe's `profile` field first (codec-level detection — ffprobe reads the MAT 2.0 header in the TrueHD bitstream and sets `profile = "TrueHD + Dolby Atmos"` when present), with `tags.title` containing 'Atmos' as a fallback. Title-only detection is unreliable — track names depend on the ripping or tagging tool used, not the disc content. The profile field is available in FFmpeg 4.x+ and requires reading the start of the TrueHD stream; for streams deep in the file, the default probesize may not be sufficient.
+
+Non-Atmos TrueHD tracks (codec truehd, no Atmos detected in profile or title) are offered as a separate conversion option. This is a size saving (~2–3 GB per 2hr film) at the cost of lossless audio quality — users are told this explicitly.
 
 ### Conversion
 
