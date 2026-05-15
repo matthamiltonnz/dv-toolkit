@@ -47,13 +47,13 @@ echo  Detecting TrueHD tracks...
 ffprobe -v quiet -show_streams -of json "%SOURCE%" > "%TMP_JSON%" 2>&1
 
 rem Field 5 is is_atmos: 1 if profile or title contains Atmos, else 0
-powershell -NoProfile -Command "$j=Get-Content '%TMP_JSON%'|ConvertFrom-Json;$i=0;$j.streams|%%{if($_.codec_type-eq'audio'){if($_.codec_name-eq'truehd'){$t=if($_.tags.title){$_.tags.title}else{'TrueHD'};$p=if($_.profile){$_.profile}else{''};$l=if($_.tags.language){$_.tags.language}else{'und'};$a=if(($p-match'(?i)atmos')-or($t-match'(?i)atmos')){'1'}else{'0'};Write-Output \"$i|$l|$t|$a\"};$i++}}" > "%TMP_TRACKS%" 2>nul
+powershell -NoProfile -Command "$j=Get-Content '%TMP_JSON%'|ConvertFrom-Json;$i=0;$j.streams|%%{if($_.codec_type-eq'audio'){if($_.codec_name-eq'truehd'){$t=if($_.tags.title){$_.tags.title}else{'TrueHD'};$p=if($_.profile){$_.profile}else{''};$l=if($_.tags.language){$_.tags.language}else{'und'};$a=if(($p-match'(?i)atmos')-or($t-match'(?i)atmos')){'1'}else{'0'};$si=$_.index;Write-Output \"$i|$l|$t|$a|$si\"};$i++}}" > "%TMP_TRACKS%" 2>nul
 if exist "%TMP_JSON%" del "%TMP_JSON%"
 
 set TRUEHD_COUNT=0
 set ATMOS_COUNT=0
 set NON_ATMOS_COUNT=0
-for /f "usebackq tokens=1,2,3,4 delims=|" %%A in ("%TMP_TRACKS%") do (
+for /f "usebackq tokens=1,2,3,4,5 delims=|" %%A in ("%TMP_TRACKS%") do (
     set /a TRUEHD_COUNT+=1
     if "%%D"=="1" (set /a ATMOS_COUNT+=1) else (set /a NON_ATMOS_COUNT+=1)
 )
@@ -70,7 +70,7 @@ echo.
 if %ATMOS_COUNT% GTR 0 (
     echo  TrueHD Atmos track(s) detected - will be converted ^(Apple TV compatibility + size saving^):
     echo.
-    for /f "usebackq tokens=1,2,3,4 delims=|" %%A in ("%TMP_TRACKS%") do (
+    for /f "usebackq tokens=1,2,3,4,5 delims=|" %%A in ("%TMP_TRACKS%") do (
         if "%%D"=="1" echo    Audio stream %%A - %%C [%%B]
     )
     echo.
@@ -80,7 +80,7 @@ set CONVERT_NON_ATMOS=0
 if %NON_ATMOS_COUNT% GTR 0 (
     echo  TrueHD track(s) without Atmos:
     echo.
-    for /f "usebackq tokens=1,2,3,4 delims=|" %%A in ("%TMP_TRACKS%") do (
+    for /f "usebackq tokens=1,2,3,4,5 delims=|" %%A in ("%TMP_TRACKS%") do (
         if "%%D"=="0" echo    Audio stream %%A - %%C [%%B]
     )
     echo.
@@ -99,8 +99,22 @@ if %ATMOS_COUNT% EQU 0 if !CONVERT_NON_ATMOS! EQU 0 (
     exit /b 0
 )
 
+echo.
+echo  Add EAC3 alongside the original TrueHD, or replace it?
+echo    [1] Add     - keep TrueHD, add EAC3 track ^(larger file, max compatibility^)
+echo    [2] Replace - remove TrueHD, EAC3 only ^(smaller file^)
+echo.
+set /p ADD_OR_REPLACE=  Choice [1/2]:
+set REPLACE_TRUEHD=0
+if "!ADD_OR_REPLACE!"=="2" set REPLACE_TRUEHD=1
+echo.
+
 echo  Output: %NAME%_atmos_eac3.mkv
-echo  Original TrueHD tracks will be kept alongside the new EAC3 tracks.
+if !REPLACE_TRUEHD! EQU 1 (
+    echo  Original TrueHD tracks will be removed.
+) else (
+    echo  Original TrueHD tracks will be kept alongside the new EAC3 tracks.
+)
 echo.
 pause
 
@@ -112,11 +126,12 @@ echo  Converting...
 echo.
 
 set TRACK_NUM=0
-for /f "usebackq tokens=1,2,3,4 delims=|" %%A in ("%TMP_TRACKS%") do (
+for /f "usebackq tokens=1,2,3,4,5 delims=|" %%A in ("%TMP_TRACKS%") do (
     set "AUDIO_IDX=%%A"
     set "TRACK_LANG=%%B"
     set "ORIG_TITLE=%%C"
     set "IS_ATMOS=%%D"
+    set "STREAM_IDX=%%E"
 
     rem Skip non-Atmos tracks if user declined
     if "!IS_ATMOS!"=="0" if !CONVERT_NON_ATMOS! EQU 0 goto :skip_track
@@ -145,11 +160,23 @@ rem ---- Remux using PowerShell to handle dynamic arguments ----
 echo.
 echo  Building output MKV...
 
-echo $tracks = Get-Content '%TMP_TRACKS%'> "%TMP_PS%"
+echo $tracks = Get-Content '%TMP_TRACKS%'>> "%TMP_PS%"
 echo $convertNonAtmos = %CONVERT_NON_ATMOS%>> "%TMP_PS%"
-echo $a = @('-o', '%OUTPUT_MKV%', '%SOURCE%')>> "%TMP_PS%"
+echo $replaceTrueHD = %REPLACE_TRUEHD%>> "%TMP_PS%"
+echo $excludeIdxs = @()>> "%TMP_PS%"
 echo foreach ($t in $tracks) {>> "%TMP_PS%"
-echo     $p = $t -split '\|', 4>> "%TMP_PS%"
+echo     $p = $t -split '\|', 5>> "%TMP_PS%"
+echo     $isAtmos = $p[3] -eq '1'>> "%TMP_PS%"
+echo     if (-not $isAtmos -and $convertNonAtmos -eq 0) { continue }>> "%TMP_PS%"
+echo     $excludeIdxs += '!' + $p[4]>> "%TMP_PS%"
+echo }>> "%TMP_PS%"
+echo $a = @('-o', '%OUTPUT_MKV%')>> "%TMP_PS%"
+echo if ($replaceTrueHD -eq 1 -and $excludeIdxs.Count -gt 0) {>> "%TMP_PS%"
+echo     $a += '--audio-tracks', ($excludeIdxs -join ',')>> "%TMP_PS%"
+echo }>> "%TMP_PS%"
+echo $a += '%SOURCE%'>> "%TMP_PS%"
+echo foreach ($t in $tracks) {>> "%TMP_PS%"
+echo     $p = $t -split '\|', 5>> "%TMP_PS%"
 echo     $isAtmos = $p[3] -eq '1'>> "%TMP_PS%"
 echo     if (-not $isAtmos -and $convertNonAtmos -eq 0) { continue }>> "%TMP_PS%"
 echo     $eac3 = '%WORKDIR%\track_' + $p[0] + '.eac3'>> "%TMP_PS%"

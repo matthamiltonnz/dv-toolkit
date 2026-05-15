@@ -123,13 +123,14 @@ for s in data.get('streams', []):
             channels = s.get('channels', 0)
             profile = s.get('profile', '')
             is_atmos = '1' if ('atmos' in profile.lower() or 'atmos' in title.lower()) else '0'
-            print(str(audio_idx) + '|' + lang + '|' + title + '|' + str(channels) + '|' + is_atmos)
+            stream_index = s.get('index', 0)
+            print(str(audio_idx) + '|' + lang + '|' + title + '|' + str(channels) + '|' + is_atmos + '|' + str(stream_index))
         audio_idx += 1
 " > "$ATMOS_TRACKS_FILE"
 
 ATMOS_COUNT=0
 NON_ATMOS_COUNT=0
-while IFS='|' read -r _IDX _LANG _TITLE _CH IS_ATMOS; do
+while IFS='|' read -r _IDX _LANG _TITLE _CH IS_ATMOS _SIDX; do
     if [ "$IS_ATMOS" == "1" ]; then
         ((ATMOS_COUNT++)) || true
     else
@@ -180,8 +181,24 @@ if [ "$ATMOS_COUNT" -eq 0 ] && [ "$CONVERT_NON_ATMOS" == "0" ]; then
     exit 0
 fi
 
+echo ""
+echo "  Add EAC3 alongside the original TrueHD, or replace it?"
+echo "    [1] Add     — keep TrueHD, add EAC3 track (larger file, max compatibility)"
+echo "    [2] Replace — remove TrueHD, EAC3 only (smaller file)"
+echo ""
+read -r -p "  Choice [1/2]: " ADD_OR_REPLACE
+REPLACE_TRUEHD=0
+if [ "$ADD_OR_REPLACE" == "2" ]; then
+    REPLACE_TRUEHD=1
+fi
+echo ""
+
 echo "  Output: ${NAME}_atmos_eac3.mkv"
-echo "  Original TrueHD tracks are kept alongside the new EAC3 tracks."
+if [ "$REPLACE_TRUEHD" == "1" ]; then
+    echo "  Original TrueHD tracks will be removed."
+else
+    echo "  Original TrueHD tracks are kept alongside the new EAC3 tracks."
+fi
 echo ""
 read -r -p "  Press Enter to continue or Ctrl+C to cancel..."
 echo ""
@@ -191,9 +208,10 @@ hdr "STEP 2 — Converting to EAC3"
 declare -a EAC3_FILES
 declare -a EAC3_LANGS
 declare -a EAC3_TITLES
+declare -a REPLACED_STREAM_IDXS
 EAC3_COUNT=0
 
-while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS; do
+while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS STREAM_IDX; do
     # Skip non-Atmos tracks if user declined
     if [ "$IS_ATMOS" == "0" ] && [ "$CONVERT_NON_ATMOS" == "0" ]; then
         continue
@@ -218,13 +236,22 @@ while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS; do
     EAC3_FILES[$EAC3_COUNT]="$EAC3_FILE"
     EAC3_LANGS[$EAC3_COUNT]="$LANG"
     EAC3_TITLES[$EAC3_COUNT]="$NEW_TITLE"
+    REPLACED_STREAM_IDXS[$EAC3_COUNT]="$STREAM_IDX"
     ((EAC3_COUNT++)) || true
 done < "$ATMOS_TRACKS_FILE"
 
 hdr "STEP 3 — Remuxing"
 log "Adding EAC3 tracks to MKV..."
 
-MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" "$SOURCE")
+if [ "$REPLACE_TRUEHD" == "1" ]; then
+    EXCL=""
+    for SIDX in "${REPLACED_STREAM_IDXS[@]}"; do
+        EXCL="${EXCL}!${SIDX},"
+    done
+    MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" --audio-tracks "${EXCL%,}" "$SOURCE")
+else
+    MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" "$SOURCE")
+fi
 IDX=0
 for EAC3_FILE in "${EAC3_FILES[@]}"; do
     MERGE_ARGS+=(--language "0:${EAC3_LANGS[$IDX]}" --track-name "0:${EAC3_TITLES[$IDX]}" "$EAC3_FILE")
