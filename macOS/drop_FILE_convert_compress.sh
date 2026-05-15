@@ -346,12 +346,10 @@ BUF_SIZE="$((TARGET_MBPS * 4))M"
 if [ "$REMUX_ONLY" == "1" ]; then
     FINAL="$SOURCEDIR/$FILENAME"
     echo "  Mode:    Remux only (P7→P8, no re-encode)"
-    echo "  Output:  $FILENAME (replaces original)"
 elif [ "$AV1_MODE" == "1" ]; then
     FINAL="$SOURCEDIR/${NAME}_av1_crf${AV1_CRF}.mkv"
     echo "  Mode:    AV1 / SVT-AV1 (CPU) — DV Profile 10 output"
     echo "  CRF:     $AV1_CRF  Preset: 6"
-    echo "  Output:  ${NAME}_av1_crf${AV1_CRF}.mkv"
     echo ""
     warn "AV1 is CPU encoded — expect several hours for a 4K film on M5."
     warn "Output is DV Profile 10 — playback compatibility is limited."
@@ -360,7 +358,6 @@ else
     FINAL="$SOURCEDIR/${NAME}_${TARGET_MBPS}mbps.mkv"
     echo "  Mode:    HEVC / VideoToolbox — DV Profile 8 output"
     echo "  Bitrate: ${TARGET_MBPS} Mbps"
-    echo "  Output:  ${NAME}_${TARGET_MBPS}mbps.mkv"
     echo "  Note:    Original kept — compare quality before deleting."
 fi
 echo ""
@@ -600,6 +597,17 @@ if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
         AUDIO_ARGS="--no-audio"
     fi
 fi
+
+# ---- Confirm output and start ----
+echo ""
+if [ "$REMUX_ONLY" == "1" ]; then
+    echo "  Output:  $FILENAME (replaces original)"
+else
+    echo "  Output:  $(basename "$FINAL")"
+fi
+echo ""
+read -r -p "  Press Enter to start copy and conversion, or Ctrl+C to cancel..."
+echo ""
 
 # ---- All decisions made — copy source locally now ----
 hdr "STEP 3 — Copy"
