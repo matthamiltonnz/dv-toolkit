@@ -379,36 +379,12 @@ if [ "$REMUX_ONLY" == "1" ]; then
     echo ""
 fi
 
-# ---- Create work folder ----
-hdr "STEP 1 — Setup"
-log "Creating working directory..."
-mkdir -p "$WORKDIR"
-ok "Workdir: $WORKDIR"
-
-# ---- Copy source locally ----
-log "Copying source file locally..."
-rm -f "$LOCAL_SOURCE"
-SOURCE_SIZE=$(stat -f%z "$SOURCE")
-cp "$SOURCE" "$LOCAL_SOURCE" &
-CP_PID=$!
-while kill -0 $CP_PID 2>/dev/null; do
-    COPIED=$(stat -f%z "$LOCAL_SOURCE" 2>/dev/null || echo 0)
-    PCT=$((COPIED * 100 / SOURCE_SIZE))
-    COPIED_GB=$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")
-    TOTAL_GB=$(awk "BEGIN{printf \"%.1f\", $SOURCE_SIZE/1073741824}")
-    printf "\r  %s GB / %s GB (%d%%)" "$COPIED_GB" "$TOTAL_GB" "$PCT"
-    sleep 2
-done
-wait $CP_PID
-echo ""
-ok "Copied: $FILENAME"
-
-# ---- Inspect tracks ----
-hdr "STEP 2 — Track Inspection"
+# ---- Inspect tracks (reads source directly — fast even over network) ----
+hdr "STEP 1 — Track Inspection"
 log "Reading stream information..."
 echo ""
 
-PROBE=$("$FFPROBE" -v quiet -show_streams -of json "$LOCAL_SOURCE")
+PROBE=$("$FFPROBE" -v quiet -show_streams -of json "$SOURCE")
 VIDEO_TRACKS=$(echo "$PROBE" | grep -c '"codec_type": "video"')
 DV_PROFILE=$(echo "$PROBE" | grep '"dv_profile"' | head -1 | tr -d ' ",' | cut -d: -f2)
 
@@ -447,7 +423,7 @@ while IFS= read -r line; do
         AUDIO_IS_ATMOS[$AUDIO_COUNT]=0
     fi
     ((AUDIO_COUNT++)) || true
-done < <("$FFPROBE" -v quiet -show_streams -select_streams a -of json "$LOCAL_SOURCE" | \
+done < <("$FFPROBE" -v quiet -show_streams -select_streams a -of json "$SOURCE" | \
     python3 -c "
 import json,sys
 data=json.load(sys.stdin)
@@ -469,7 +445,7 @@ while IFS= read -r line; do
     echo "    [$SUB_COUNT] Track $INDEX — $CODEC  lang:${LANG:-unknown}  ${TITLE}"
     SUB_INFO[$SUB_COUNT]="$INDEX"
     ((SUB_COUNT++)) || true
-done < <("$FFPROBE" -v quiet -show_streams -select_streams s -of json "$LOCAL_SOURCE" | \
+done < <("$FFPROBE" -v quiet -show_streams -select_streams s -of json "$SOURCE" | \
     python3 -c "
 import json,sys
 data=json.load(sys.stdin)
@@ -479,7 +455,7 @@ for s in data['streams']:
 echo ""
 
 # ---- Track selection ----
-hdr "STEP 3 — Track Selection"
+hdr "STEP 2 — Track Selection"
 echo "  Enter the numbers of the audio tracks to KEEP (space separated)."
 echo "  Example: 0 2  (keeps first and third audio tracks)"
 echo "  Press Enter to keep ALL audio tracks."
@@ -624,6 +600,26 @@ if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
         AUDIO_ARGS="--no-audio"
     fi
 fi
+
+# ---- All decisions made — copy source locally now ----
+hdr "STEP 3 — Copy"
+log "Copying source file locally..."
+mkdir -p "$WORKDIR"
+rm -f "$LOCAL_SOURCE"
+SOURCE_SIZE=$(stat -f%z "$SOURCE")
+cp "$SOURCE" "$LOCAL_SOURCE" &
+CP_PID=$!
+while kill -0 $CP_PID 2>/dev/null; do
+    COPIED=$(stat -f%z "$LOCAL_SOURCE" 2>/dev/null || echo 0)
+    PCT=$((COPIED * 100 / SOURCE_SIZE))
+    COPIED_GB=$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")
+    TOTAL_GB=$(awk "BEGIN{printf \"%.1f\", $SOURCE_SIZE/1073741824}")
+    printf "\r  %s GB / %s GB (%d%%)" "$COPIED_GB" "$TOTAL_GB" "$PCT"
+    sleep 2
+done
+wait $CP_PID
+echo ""
+ok "Copied: $FILENAME"
 
 # ---- Convert TrueHD tracks to EAC3 if requested ----
 if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
