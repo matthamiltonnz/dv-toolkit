@@ -12,6 +12,14 @@ set "TMP_OTHER=%~dp0tmp_other.txt"
 set "TMP_JSON=%~dp0tmp_probe.json"
 set "TMP_DVLINE=%~dp0tmp_dvline.txt"
 
+rem Clean up any leftover files from previous runs
+if exist "%~dp0tmp_scan_state.txt" del "%~dp0tmp_scan_state.txt" >nul 2>&1
+if exist "%TMP_JSON%"   del "%TMP_JSON%" >nul 2>&1
+if exist "%TMP_DVLINE%" del "%TMP_DVLINE%" >nul 2>&1
+if exist "%TMP_P7%"     del "%TMP_P7%" >nul 2>&1
+if exist "%TMP_P8%"     del "%TMP_P8%" >nul 2>&1
+if exist "%TMP_OTHER%"  del "%TMP_OTHER%" >nul 2>&1
+
 echo.
 echo  Dolby Vision Profile Scanner
 echo  ------------------------------

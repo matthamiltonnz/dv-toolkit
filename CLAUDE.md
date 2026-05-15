@@ -176,7 +176,7 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 ### macOS
 
 - **`declare -a` arrays in bash** — macOS ships with bash 3.2 (due to GPL licensing). The `declare -a` array syntax used for track selection works in bash 3.2 but `((count++))` can trigger ERR trap on zero result. Scripts use `|| true` to suppress this.
-- **Bash `^^` uppercase operator** *(fixed)* — `${VAR^^}` requires bash 4.0+. macOS ships bash 3.2. All scripts now use explicit `[[ "$VAR" == "Y" ]] || [[ "$VAR" == "y" ]]` comparisons instead.
+- **Bash `^^` uppercase operator** *(fixed)* — `${VAR^^}` requires bash 4.0+. macOS ships bash 3.2. All scripts now use `tr '[:lower:]' '[:upper:]'` or explicit `Y`/`y` comparisons instead. Watch for this when adding new input prompts.
 - **rsync progress** — `rsync --progress` shows per-file transfer progress. For very large files this works well; for many small files the output is verbose.
 - **Gatekeeper** — dovi_tool binary requires `xattr -d com.apple.quarantine` after download. This is a one-time step but easy to forget.
 
@@ -230,6 +230,8 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Investigated DoViBaker for FEL preservation — determined not suitable (see below) |
 | May 2026 | Published to GitHub as public repository |
 | May 2026 | Removed multi-folder session persistence from Windows scanner — caused "The syntax of the command is incorrect." on cmd.exe; reverted to single-folder scan per run |
+| May 2026 | macOS convert script: added DV profile check before mode prompt; changed WORKDIR to /tmp/dv-toolkit to avoid OneDrive sync; HEVC/AV1 output named with quality suffix (_25mbps, _av1_crf27), originals kept; OneDrive detection notice added; fixed bash 3.2 `^^` bug in subtitle NONE check |
+| May 2026 | Windows scanner: added startup cleanup of leftover temp files from old session-based version |
 
 ---
 

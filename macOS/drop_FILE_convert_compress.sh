@@ -3,7 +3,7 @@
 # =============================================================
 #  DV P7/P8 Converter & Compressor for macOS
 #  - Converts DV Profile 7 to Profile 8 if needed
-#  - Remux-only mode: P7→P8 without re-encoding (matches Windows)
+#  - Remux-only mode: P7→P8 without re-encoding
 #  - HEVC mode: re-encodes using Apple VideoToolbox hardware
 #  - AV1 mode: re-encodes using SVT-AV1 (CPU), retains DV as Profile 10
 #
@@ -67,7 +67,7 @@ AV1_CRF_ARG="${3:-}"
 
 # ---- Paths ----
 SCRIPTDIR="$(cd "$(dirname "$0")" && pwd)"
-WORKDIR="$SCRIPTDIR/work/$NAME"
+WORKDIR="/tmp/dv-toolkit/$NAME"
 LOCAL_SOURCE="$WORKDIR/$FILENAME"
 BL="$WORKDIR/bl.hevc"
 EL="$WORKDIR/el.hevc"
@@ -107,11 +107,9 @@ fi
 
 # ---- Check AV1 + DV support in ffmpeg ----
 check_av1_dv_support() {
-    # Check libsvtav1 is available
     if ! "$FFMPEG" -encoders 2>/dev/null | grep -q libsvtav1; then
         return 1
     fi
-    # Check dolbyvision flag is present in libsvtav1
     if ! "$FFMPEG" -h encoder=libsvtav1 2>/dev/null | grep -q dolbyvision; then
         return 2
     fi
@@ -126,6 +124,44 @@ echo -e "${BOLD}  ================================================${NC}"
 echo "  Source: $FILENAME"
 echo ""
 
+# ---- OneDrive / cloud storage notice ----
+if echo "$SCRIPTDIR" | grep -qi "onedrive\|CloudStorage\|iCloud Drive"; then
+    warn "Script is running from a cloud-synced folder."
+    warn "Temporary conversion files will be written to /tmp/dv-toolkit/"
+    warn "to avoid syncing large intermediate files to the cloud."
+    warn "For best results, move the toolkit to a local folder:"
+    warn "  ~/Desktop/DV-Toolkit  or  ~/DV-Toolkit"
+    echo ""
+fi
+
+# ---- Early DV profile check ----
+log "Checking Dolby Vision profile..."
+DV_PROFILE_EARLY=$("$FFPROBE" -v quiet -show_streams -of json "$SOURCE" | \
+    python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+for s in data.get('streams',[]):
+    for sd in s.get('side_data_list',[]):
+        if 'dv_profile' in sd:
+            print(sd['dv_profile'])
+            sys.exit()
+" 2>/dev/null)
+
+if [ -z "$DV_PROFILE_EARLY" ]; then
+    warn "No Dolby Vision profile detected in this file."
+    warn "This script is intended for DV content."
+    echo ""
+    read -r -p "  Continue anyway? [y/N]: " DV_CONT
+    if [[ "$DV_CONT" != "y" && "$DV_CONT" != "Y" ]]; then
+        echo "  Cancelled."
+        exit 0
+    fi
+    echo ""
+else
+    ok "DV Profile $DV_PROFILE_EARLY detected."
+    echo ""
+fi
+
 # ---- Mode selection ----
 REMUX_ONLY=0
 HEVC_MODE=0
@@ -134,6 +170,11 @@ TARGET_MBPS=25
 AV1_CRF=27
 
 if [ "$MODE_ARG" == "remux" ]; then
+    if [ "$DV_PROFILE_EARLY" != "7" ]; then
+        err "Remux mode converts Profile 7 to Profile 8. This file is Profile ${DV_PROFILE_EARLY:-unknown}."
+        read -r -p "  Press Enter to close..."
+        exit 1
+    fi
     REMUX_ONLY=1
 elif [ "$MODE_ARG" == "av1" ]; then
     AV1_MODE=1
@@ -142,40 +183,75 @@ elif [[ "$MODE_ARG" =~ ^[0-9]+$ ]]; then
     HEVC_MODE=1
     TARGET_MBPS="$MODE_ARG"
 else
-    # Interactive prompt
+    # Interactive prompt — options depend on source profile
     echo "  Select mode:"
-    echo "    [1] Remux only — convert P7→P8, no re-encode (matches Windows workflow)"
-    echo "    [2] HEVC       — re-encode with Apple VideoToolbox at target bitrate"
-    echo "    [3] AV1        — re-encode with SVT-AV1 (CPU), DV Profile 10 output"
-    echo "                     ⚠ Experimental — requires compatible ffmpeg build"
-    echo "                     ⚠ No hardware AV1 decode on current Apple TV hardware"
-    echo ""
-    read -r -p "  Choice [1/2/3]: " MODE_CHOICE
+    if [ "$DV_PROFILE_EARLY" == "7" ]; then
+        echo "    [1] Remux only — convert P7→P8, no re-encode"
+        echo "    [2] HEVC       — re-encode with Apple VideoToolbox at target bitrate"
+        echo "    [3] AV1        — re-encode with SVT-AV1 (CPU), DV Profile 10 output"
+        echo "                     ⚠ Experimental — requires compatible ffmpeg build"
+        echo "                     ⚠ No hardware AV1 decode on current Apple TV hardware"
+        echo ""
+        read -r -p "  Choice [1/2/3]: " MODE_CHOICE
 
-    case "$MODE_CHOICE" in
-        1) REMUX_ONLY=1 ;;
-        3) AV1_MODE=1
-           echo ""
-           echo "  AV1 CRF reference (lower = better quality, larger file):"
-           echo "    22 = very high quality  (~12GB / 2hr)"
-           echo "    27 = iTunes equivalent  (~8GB / 2hr)   ← default"
-           echo "    32 = streaming quality  (~5GB / 2hr)"
-           echo ""
-           read -r -p "  CRF value [27]: " CRF_INPUT
-           AV1_CRF="${CRF_INPUT:-27}"
-           ;;
-        *) HEVC_MODE=1
-           echo ""
-           echo "  Bitrate targets:"
-           echo "    15 Mbps = Amazon Prime quality  (~14GB / 2hr)"
-           echo "    22 Mbps = Apple iTunes quality  (~20GB / 2hr)"
-           echo "    25 Mbps = Apple TV+ quality     (~23GB / 2hr)  ← default"
-           echo "    31 Mbps = iTunes peak quality   (~28GB / 2hr)"
-           echo ""
-           read -r -p "  Target bitrate in Mbps [25]: " MBPS_INPUT
-           TARGET_MBPS="${MBPS_INPUT:-25}"
-           ;;
-    esac
+        case "$MODE_CHOICE" in
+            1) REMUX_ONLY=1 ;;
+            3) AV1_MODE=1
+               echo ""
+               echo "  AV1 CRF reference (lower = better quality, larger file):"
+               echo "    22 = very high quality  (~12GB / 2hr)"
+               echo "    27 = iTunes equivalent  (~8GB / 2hr)   ← default"
+               echo "    32 = streaming quality  (~5GB / 2hr)"
+               echo ""
+               read -r -p "  CRF value [27]: " CRF_INPUT
+               AV1_CRF="${CRF_INPUT:-27}"
+               ;;
+            *) HEVC_MODE=1
+               echo ""
+               echo "  Bitrate targets:"
+               echo "    15 Mbps = Amazon Prime quality  (~14GB / 2hr)"
+               echo "    22 Mbps = Apple iTunes quality  (~20GB / 2hr)"
+               echo "    25 Mbps = Apple TV+ quality     (~23GB / 2hr)  ← default"
+               echo "    31 Mbps = iTunes peak quality   (~28GB / 2hr)"
+               echo ""
+               read -r -p "  Target bitrate in Mbps [25]: " MBPS_INPUT
+               TARGET_MBPS="${MBPS_INPUT:-25}"
+               ;;
+        esac
+    else
+        echo "  File is DV Profile $DV_PROFILE_EARLY — remux not needed, compression only."
+        echo ""
+        echo "    [1] HEVC — re-encode with Apple VideoToolbox at target bitrate"
+        echo "    [2] AV1  — re-encode with SVT-AV1 (CPU), DV Profile 10 output"
+        echo "               ⚠ Experimental — requires compatible ffmpeg build"
+        echo "               ⚠ No hardware AV1 decode on current Apple TV hardware"
+        echo ""
+        read -r -p "  Choice [1/2]: " MODE_CHOICE
+
+        case "$MODE_CHOICE" in
+            2) AV1_MODE=1
+               echo ""
+               echo "  AV1 CRF reference (lower = better quality, larger file):"
+               echo "    22 = very high quality  (~12GB / 2hr)"
+               echo "    27 = iTunes equivalent  (~8GB / 2hr)   ← default"
+               echo "    32 = streaming quality  (~5GB / 2hr)"
+               echo ""
+               read -r -p "  CRF value [27]: " CRF_INPUT
+               AV1_CRF="${CRF_INPUT:-27}"
+               ;;
+            *) HEVC_MODE=1
+               echo ""
+               echo "  Bitrate targets:"
+               echo "    15 Mbps = Amazon Prime quality  (~14GB / 2hr)"
+               echo "    22 Mbps = Apple iTunes quality  (~20GB / 2hr)"
+               echo "    25 Mbps = Apple TV+ quality     (~23GB / 2hr)  ← default"
+               echo "    31 Mbps = iTunes peak quality   (~28GB / 2hr)"
+               echo ""
+               read -r -p "  Target bitrate in Mbps [25]: " MBPS_INPUT
+               TARGET_MBPS="${MBPS_INPUT:-25}"
+               ;;
+        esac
+    fi
 fi
 
 # ---- Validate AV1 support if needed ----
@@ -222,26 +298,27 @@ BUF_SIZE="$((TARGET_MBPS * 4))M"
 
 if [ "$REMUX_ONLY" == "1" ]; then
     FINAL="$SOURCEDIR/$FILENAME"
-    echo "  Mode:   Remux only (P7→P8, no re-encode)"
-    echo "  Output: $FILENAME (replaces original)"
+    echo "  Mode:    Remux only (P7→P8, no re-encode)"
+    echo "  Output:  $FILENAME (replaces original)"
 elif [ "$AV1_MODE" == "1" ]; then
-    FINAL="$SOURCEDIR/${NAME}_av1.mkv"
-    echo "  Mode:   AV1 / SVT-AV1 (CPU) — DV Profile 10 output"
-    echo "  CRF:    $AV1_CRF  Preset: 6"
-    echo "  Output: ${NAME}_av1.mkv"
+    FINAL="$SOURCEDIR/${NAME}_av1_crf${AV1_CRF}.mkv"
+    echo "  Mode:    AV1 / SVT-AV1 (CPU) — DV Profile 10 output"
+    echo "  CRF:     $AV1_CRF  Preset: 6"
+    echo "  Output:  ${NAME}_av1_crf${AV1_CRF}.mkv"
     echo ""
     warn "AV1 is CPU encoded — expect several hours for a 4K film on M5."
     warn "Output is DV Profile 10 — playback compatibility is limited."
     warn "Current Apple TV 4K (2022) has no AV1 hardware decode."
 else
-    FINAL="$SOURCEDIR/${NAME}_compressed.mkv"
-    echo "  Mode:   HEVC / VideoToolbox — DV Profile 8 output"
+    FINAL="$SOURCEDIR/${NAME}_${TARGET_MBPS}mbps.mkv"
+    echo "  Mode:    HEVC / VideoToolbox — DV Profile 8 output"
     echo "  Bitrate: ${TARGET_MBPS} Mbps"
-    echo "  Output: ${NAME}_compressed.mkv"
+    echo "  Output:  ${NAME}_${TARGET_MBPS}mbps.mkv"
+    echo "  Note:    Original kept — compare quality before deleting."
 fi
 echo ""
 
-# ---- Deletion warning for remux mode ----
+# ---- Deletion warning for remux mode only ----
 if [ "$REMUX_ONLY" == "1" ]; then
     echo -e "${YELLOW}  ⚠ WARNING: The original source file will be DELETED after successful conversion.${NC}"
     echo "  The converted file will replace it with the same filename."
@@ -349,7 +426,8 @@ if [ -n "$AUDIO_CHOICE" ]; then
 fi
 
 SUB_ARGS=""
-if [ "${SUB_CHOICE^^}" == "NONE" ]; then
+SUB_CHOICE_UPPER=$(echo "$SUB_CHOICE" | tr '[:lower:]' '[:upper:]')
+if [ "$SUB_CHOICE_UPPER" == "NONE" ]; then
     SUB_ARGS="--no-subtitles"
 elif [ -n "$SUB_CHOICE" ]; then
     KEEP_SUB_TRACKS=""
@@ -390,7 +468,7 @@ else
         mv "$CLEAN_BL" "$BL"
         ok "Converted to Profile 8."
     else
-        log "Profile 8 source — extracting HEVC stream..."
+        log "Profile $DV_PROFILE source — extracting HEVC stream..."
         "$FFMPEG" -y -i "$LOCAL_SOURCE" -map 0:v:0 -c:v copy -an -f hevc "$BL" 2>/dev/null
         ok "HEVC stream extracted."
     fi
@@ -495,8 +573,8 @@ elif [ "$AV1_MODE" == "1" ]; then
     echo ""
     echo -e "${BOLD}  ================================================${NC}"
     echo -e "${GREEN}${BOLD}  Done! (AV1 / DV Profile 10)${NC}"
-    echo "  Original: $SOURCE_SIZE  →  Output: $OUTPUT_SIZE"
-    echo "  Output:   $FINAL"
+    echo "  Original: $FILENAME ($SOURCE_SIZE) — kept for quality comparison."
+    echo "  Output:   $(basename "$FINAL") ($OUTPUT_SIZE)"
     echo ""
     warn "Verify DV Profile 10 playback on your target devices before"
     warn "converting your library. Current Apple TV 4K (A15) has no"
@@ -568,8 +646,8 @@ else
     echo ""
     echo -e "${BOLD}  ================================================${NC}"
     echo -e "${GREEN}${BOLD}  Done! (HEVC / DV Profile 8)${NC}"
-    echo "  Original: $SOURCE_SIZE  →  Compressed: $OUTPUT_SIZE"
-    echo "  Output:   $FINAL"
+    echo "  Original: $FILENAME ($SOURCE_SIZE) — kept for quality comparison."
+    echo "  Output:   $(basename "$FINAL") ($OUTPUT_SIZE)"
     echo -e "${BOLD}  ================================================${NC}"
 
 fi
