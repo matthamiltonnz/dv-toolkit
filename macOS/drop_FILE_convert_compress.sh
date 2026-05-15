@@ -603,6 +603,16 @@ if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
     fi
 fi
 
+# ---- Update output name to reflect audio conversion ----
+if [ "$REMUX_ONLY" != "1" ] && { [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; }; then
+    OUTPUT_NAME=$(echo "$NAME" | sed 's/TrueHD Atmos/EAC3 Atmos/g; s/TrueHD/EAC3/g')
+    if [ "$AV1_MODE" == "1" ]; then
+        FINAL="$SOURCEDIR/${OUTPUT_NAME}_av1_crf${AV1_CRF}.mkv"
+    else
+        FINAL="$SOURCEDIR/${OUTPUT_NAME}_${TARGET_MBPS}mbps.mkv"
+    fi
+fi
+
 # ---- Confirm output and start ----
 echo ""
 if [ "$REMUX_ONLY" == "1" ]; then
