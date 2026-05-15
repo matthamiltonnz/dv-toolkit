@@ -619,6 +619,7 @@ if [ "$REMUX_ONLY" == "1" ]; then
     echo "  Output:  $FILENAME (replaces original)"
 else
     echo "  Output:  $(basename "$FINAL")"
+    echo "  Note:    Original kept — compare quality before deleting."
 fi
 echo ""
 read -r -p "  Press Enter to start copy and conversion, or Ctrl+C to cancel..."
