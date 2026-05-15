@@ -575,8 +575,20 @@ if [ "$REMUX_ONLY" != "1" ] && [ "$AUDIO_COUNT" -gt 0 ]; then
     fi
 fi
 
-# ---- Rebuild audio args excluding tracks being converted to EAC3 ----
+# ---- Add/replace prompt (shown only if something is being converted) ----
+REPLACE_TRUEHD=0
 if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
+    echo ""
+    echo "  Add EAC3 alongside the original TrueHD, or replace it?"
+    echo "    [1] Add     — keep TrueHD, add EAC3 track (larger file, max compatibility)"
+    echo "    [2] Replace — remove TrueHD, EAC3 only (smaller file)"
+    echo ""
+    read -r -p "  Choice [1/2]: " ADD_OR_REPLACE
+    [ "$ADD_OR_REPLACE" == "2" ] && REPLACE_TRUEHD=1
+fi
+
+# ---- Rebuild audio args (exclude TrueHD tracks only in replace mode) ----
+if [ "$REPLACE_TRUEHD" == "1" ]; then
     KEEP_AUDIO_TRACKS=""
     N=0
     while [ $N -lt $AUDIO_COUNT ]; do
@@ -603,8 +615,8 @@ if [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; then
     fi
 fi
 
-# ---- Update output name to reflect audio conversion ----
-if [ "$REMUX_ONLY" != "1" ] && { [ "$CONVERT_ATMOS" == "1" ] || [ "$CONVERT_NON_ATMOS" == "1" ]; }; then
+# ---- Update output name to reflect audio conversion (replace mode only) ----
+if [ "$REMUX_ONLY" != "1" ] && [ "$REPLACE_TRUEHD" == "1" ]; then
     OUTPUT_NAME=$(echo "$NAME" | sed 's/TrueHD Atmos/EAC3 Atmos/g; s/TrueHD/EAC3/g')
     if [ "$AV1_MODE" == "1" ]; then
         FINAL="$SOURCEDIR/${OUTPUT_NAME}_av1_crf${AV1_CRF}.mkv"
