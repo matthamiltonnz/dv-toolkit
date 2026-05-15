@@ -449,6 +449,7 @@ data=json.load(sys.stdin)
 for s in data['streams']:
     print(json.dumps(s))
 ")
+[ "$SUB_COUNT" -eq 0 ] && echo "    (none)"
 echo ""
 
 # ---- Track selection ----
@@ -459,11 +460,13 @@ echo "  Press Enter to keep ALL audio tracks."
 echo ""
 read -r -p "  Audio tracks to keep: " AUDIO_CHOICE
 
-echo ""
-echo "  Enter the numbers of the subtitle tracks to KEEP (space separated)."
-echo "  Press Enter to keep ALL.  Type NONE to strip all subtitles."
-echo ""
-read -r -p "  Subtitle tracks to keep: " SUB_CHOICE
+if [ "$SUB_COUNT" -gt 0 ]; then
+    echo ""
+    echo "  Enter the numbers of the subtitle tracks to KEEP (space separated)."
+    echo "  Press Enter to keep ALL.  Type NONE to strip all subtitles."
+    echo ""
+    read -r -p "  Subtitle tracks to keep: " SUB_CHOICE
+fi
 
 # ---- Build mkvmerge track args ----
 AUDIO_ARGS=""
@@ -477,16 +480,18 @@ if [ -n "$AUDIO_CHOICE" ]; then
 fi
 
 SUB_ARGS=""
-SUB_CHOICE_UPPER=$(echo "$SUB_CHOICE" | tr '[:lower:]' '[:upper:]')
-if [ "$SUB_CHOICE_UPPER" == "NONE" ]; then
-    SUB_ARGS="--no-subtitles"
-elif [ -n "$SUB_CHOICE" ]; then
-    KEEP_SUB_TRACKS=""
-    for N in $SUB_CHOICE; do
-        IDX="${SUB_INFO[$N]}"
-        KEEP_SUB_TRACKS="${KEEP_SUB_TRACKS}${IDX},"
-    done
-    SUB_ARGS="--subtitle-tracks ${KEEP_SUB_TRACKS%,}"
+if [ "$SUB_COUNT" -gt 0 ]; then
+    SUB_CHOICE_UPPER=$(echo "$SUB_CHOICE" | tr '[:lower:]' '[:upper:]')
+    if [ "$SUB_CHOICE_UPPER" == "NONE" ]; then
+        SUB_ARGS="--no-subtitles"
+    elif [ -n "$SUB_CHOICE" ]; then
+        KEEP_SUB_TRACKS=""
+        for N in $SUB_CHOICE; do
+            IDX="${SUB_INFO[$N]}"
+            KEEP_SUB_TRACKS="${KEEP_SUB_TRACKS}${IDX},"
+        done
+        SUB_ARGS="--subtitle-tracks ${KEEP_SUB_TRACKS%,}"
+    fi
 fi
 
 echo ""
