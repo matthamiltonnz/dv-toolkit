@@ -141,15 +141,8 @@ The scripts copy source files locally during processing. Ensure the drive contai
 **What it does:**
 - Recursively scans all `.mkv`, `.mp4`, and `.ts` files
 - Reports Profile 7, Profile 8, and any other DV profiles found
-- Supports **multi-folder scanning** — results from multiple folders can be combined into a single report
 
-**Output:** `dv_profile_scan.txt` in the tools folder, grouped by profile with totals.
-
-**Multi-folder scanning:**
-1. Drag the first folder → scan runs and results are saved
-2. Drag another folder → prompted to add (`Y`) or start a new scan (`N`)
-3. Repeat for as many folders as needed
-4. Delete `tmp_scan_state.txt` in the tools folder to fully reset the session
+**Output:** `dv_profile_scan.txt` in the tools folder, grouped by profile with totals. To scan multiple folders, run the script separately for each folder — the report is overwritten each run.
 
 ---
 
@@ -250,7 +243,7 @@ For fixed compress mode at 25 Mbps:
 do script \"/path/to/drop_FILE_convert_compress.sh \" & quoted form of \"$f\" & \" 25\"
 ```
 
-For remux-only mode (no re-encode, matches Windows workflow):
+For remux-only mode (no re-encode):
 ```bash
 do script \"/path/to/drop_FILE_convert_compress.sh \" & quoted form of \"$f\" & \" remux\"
 ```
@@ -263,7 +256,7 @@ do script \"/path/to/drop_FILE_convert_compress.sh \" & quoted form of \"$f\" & 
 
 ### 6. Disk space
 
-The scripts copy source files locally during processing. Ensure the drive containing the scripts has at least **2× the size of your source file** free for remux mode, or **3× the size** for compress mode (source + encoded stream + output).
+The scripts write intermediate files to `/tmp/dv-toolkit/` on the system drive. Ensure the system drive has at least **2× the size of your source file** free for remux mode, or **3× the size** for compress mode (source + encoded stream + output). macOS periodically purges `/tmp` automatically.
 
 ---
 
@@ -271,7 +264,7 @@ The scripts copy source files locally during processing. Ensure the drive contai
 
 ### `drop_FILE_convert_compress.sh` — Converter & Compressor
 
-Handles P7→P8 remux (matching the Windows workflow), HEVC compression, and experimental AV1 compression. Drag an MKV onto the Automator wrapper, or run from Terminal.
+Handles P7→P8 remux, HEVC compression, and experimental AV1 compression. Drag an MKV onto the Automator wrapper, or run from Terminal. The script checks the DV profile before offering options — P8 files skip straight to compression choices.
 
 **Modes:**
 
@@ -312,17 +305,18 @@ When run interactively (no arguments) the script prompts for mode.
 > ⚠️ **AV1 mode is experimental.** Output is Dolby Vision Profile 10 (AV1 container). Device support is very limited — the current Apple TV 4K (2022, A15 chip) has no AV1 hardware decode and will struggle with 4K content. Verify playback compatibility on your target devices before converting your library. AV1 mode also requires a custom ffmpeg build — see [AV1 Setup](#av1-setup-macos) below.
 
 **In all modes the script:**
-- Copies the source locally before processing (shows rsync progress)
+- Checks DV profile before prompting for mode — exits cleanly if file is already P8 and no action is needed
+- Copies the source to `/tmp/dv-toolkit/` before processing (avoids OneDrive or iCloud sync of intermediate files)
 - Detects and handles P7 single-track and dual-track (BL+EL) sources automatically
 - Lists all audio and subtitle tracks and prompts for which to keep
 - Deletes intermediate files as it goes to minimise disk usage
 - Pauses at completion so the Terminal window stays open
 
-> ⚠️ **Remux mode deletes the original file after successful conversion.** Make a backup first if you need to preserve the original.
+> ⚠️ **Remux mode deletes the original file after successful conversion.** Make a backup first if you need to preserve the original. HEVC and AV1 modes keep the original.
 
-**Remux output:** Replaces the original file (same rename/delete workflow as Windows).
-**HEVC output:** New file alongside the original, suffixed `_compressed`.
-**AV1 output:** New file alongside the original, suffixed `_av1`.
+**Remux output:** Replaces the original file in-place.
+**HEVC output:** New file alongside the original, named `_Nmbps.mkv` (e.g. `MovieName_25mbps.mkv`). Original kept for quality comparison.
+**AV1 output:** New file alongside the original, named `_av1_crf27.mkv`. Original kept for quality comparison.
 
 ---
 
@@ -369,7 +363,7 @@ ffmpeg -h encoder=libsvtav1 | grep dolbyvision
 - Handles both single-track and dual-track (BL+EL) P7 sources automatically
 - All audio and subtitle tracks are preserved — no track selection (batch mode)
 - On error for any file, logs the failure and continues to the next file
-- Writes a full log to `batch_convert_log.txt` in the scripts folder
+- Writes a full log to `batch_convert_log.txt` on the Desktop
 
 > ⚠️ **All Profile 7 files found in the folder will be converted and originals deleted.** This cannot be undone. Make a backup of your files before running this script if you need to preserve the originals.
 
@@ -391,16 +385,14 @@ Mirrors the Windows scanner. Drag a folder onto the Automator wrapper, or run fr
 - Reports Profile 7, Profile 8, and any other DV profiles
 - Supports multi-folder scanning with combined results
 
-**Output:** `dv_profile_scan.txt` in the scripts folder.
-
-**Multi-folder scanning:** Same as Windows — drag successive folders, choosing `Y` to append. Delete `tmp_scan_state.json` to reset the session.
+**Output:** `dv_profile_scan.txt` in the scripts folder. To scan multiple folders, run the script separately for each — the report is overwritten each run.
 
 ---
 
 ## Workflow Notes
 
-- **Network performance:** When the source file is on a network share (NAS), scripts copy it to a local work folder before processing. This avoids slow network read/write during every intermediate step. If the source file is already on the same local disk as the scripts, a hard link is created instead — no data is copied and no extra space is used for the source.
-- **Disk space:** Intermediate files are deleted as soon as they are no longer needed to minimise peak disk usage. A free space check runs before each file is processed — if there is insufficient space, that file is skipped and logged, and the batch continues. See disk space notes in the setup sections above.
+- **Network performance:** When the source file is on a network share (NAS), scripts copy it to a local work folder before processing. This avoids slow network read/write during every intermediate step. If the source file is already on the same local disk as the scripts (Windows) or the system drive (macOS), a hard link is created instead — no data is copied and no extra space is used for the source.
+- **Disk space:** macOS scripts write intermediate files to `/tmp/dv-toolkit/` to avoid triggering cloud sync (OneDrive, iCloud). Windows scripts write to a `work\` subfolder alongside the scripts. Intermediate files are deleted as soon as they are no longer needed. A free space check runs before each file is processed — if there is insufficient space, that file is skipped and logged, and the batch continues.
 - **Error handling:** On failure, work folders are preserved for investigation. The original file is never deleted until the conversion is fully complete and the output has been successfully copied back.
 - **Profile 7 dual-track:** Some disc rips store the Dolby Vision enhancement layer as a separate video track. All scripts detect this automatically and handle both single and dual-track sources without any configuration.
 - **HDR10 fallback:** Profile 8 files embed DV metadata alongside a standard HDR10 base layer. Devices that don't support Dolby Vision play the HDR10 layer automatically — no separate HDR10 file is needed.

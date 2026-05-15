@@ -184,6 +184,7 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 
 - **AV1 / Profile 10** — AV1 with DV Profile 10 encoding is technically supported by FFmpeg + SVT-AV1 but not pursued due to lack of hardware AV1 decode on current Apple TV hardware. Revisit when Apple TV ships with A17 or newer.
 - **dovi_tool info verification** — Removed from scripts as it doesn't work reliably on MKV containers and requires extracting HEVC first. mkvmerge success is used as the proxy for a valid output.
+- **Cloud-synced script folders (OneDrive / iCloud)** — rsync and other file operations writing to a cloud-synced folder appear to complete immediately (the OS filesystem layer accepts the write), but the actual data is handed off to the cloud sync process asynchronously. For large files this means rsync reports 100% while the cloud is still uploading, and if sync is paused mid-transfer the destination file may be absent or incomplete. macOS scripts now write all intermediate files to `/tmp/dv-toolkit/` to avoid this entirely. Windows scripts write to a `work\` subfolder alongside the scripts — if the scripts are in an OneDrive folder on Windows, move them to a local drive.
 
 ---
 
