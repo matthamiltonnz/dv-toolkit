@@ -162,6 +162,24 @@ else
     echo ""
 fi
 
+# ---- Check existing bitrate ----
+CURRENT_BITRATE_KBPS=$("$FFPROBE" -v quiet -show_streams -select_streams v:0 -of json "$SOURCE" | \
+    python3 -c "
+import json,sys
+data=json.load(sys.stdin)
+for s in data.get('streams',[]):
+    br = s.get('bit_rate') or s.get('tags',{}).get('BPS')
+    if br:
+        print(int(br)//1000)
+        sys.exit()
+" 2>/dev/null)
+
+if [ -n "$CURRENT_BITRATE_KBPS" ]; then
+    CURRENT_BITRATE_MBPS=$((CURRENT_BITRATE_KBPS / 1000))
+    ok "Video bitrate: ~${CURRENT_BITRATE_MBPS} Mbps"
+    echo ""
+fi
+
 # ---- Mode selection ----
 REMUX_ONLY=0
 HEVC_MODE=0
@@ -213,9 +231,20 @@ else
                echo "    22 Mbps = Apple iTunes quality  (~20GB / 2hr)"
                echo "    25 Mbps = Apple TV+ quality     (~23GB / 2hr)  ← default"
                echo "    31 Mbps = iTunes peak quality   (~28GB / 2hr)"
+               [ -n "$CURRENT_BITRATE_MBPS" ] && echo "    Source bitrate: ~${CURRENT_BITRATE_MBPS} Mbps"
                echo ""
                read -r -p "  Target bitrate in Mbps [25]: " MBPS_INPUT
                TARGET_MBPS="${MBPS_INPUT:-25}"
+               if [ -n "$CURRENT_BITRATE_MBPS" ] && [ "$TARGET_MBPS" -ge "$CURRENT_BITRATE_MBPS" ]; then
+                   echo ""
+                   warn "Target (${TARGET_MBPS} Mbps) is at or above source bitrate (~${CURRENT_BITRATE_MBPS} Mbps)."
+                   warn "Compression will increase file size with no quality benefit."
+                   read -r -p "  Continue anyway? [y/N]: " BR_CONT
+                   if [[ "$BR_CONT" != "y" && "$BR_CONT" != "Y" ]]; then
+                       echo "  Cancelled."
+                       exit 0
+                   fi
+               fi
                ;;
         esac
     else
@@ -251,9 +280,20 @@ else
                echo "    22 Mbps = Apple iTunes quality  (~20GB / 2hr)"
                echo "    25 Mbps = Apple TV+ quality     (~23GB / 2hr)  ← default"
                echo "    31 Mbps = iTunes peak quality   (~28GB / 2hr)"
+               [ -n "$CURRENT_BITRATE_MBPS" ] && echo "    Source bitrate: ~${CURRENT_BITRATE_MBPS} Mbps"
                echo ""
                read -r -p "  Target bitrate in Mbps [25]: " MBPS_INPUT
                TARGET_MBPS="${MBPS_INPUT:-25}"
+               if [ -n "$CURRENT_BITRATE_MBPS" ] && [ "$TARGET_MBPS" -ge "$CURRENT_BITRATE_MBPS" ]; then
+                   echo ""
+                   warn "Target (${TARGET_MBPS} Mbps) is at or above source bitrate (~${CURRENT_BITRATE_MBPS} Mbps)."
+                   warn "Compression will increase file size with no quality benefit."
+                   read -r -p "  Continue anyway? [y/N]: " BR_CONT
+                   if [[ "$BR_CONT" != "y" && "$BR_CONT" != "Y" ]]; then
+                       echo "  Cancelled."
+                       exit 0
+                   fi
+               fi
                ;;
         esac
     fi
@@ -346,7 +386,19 @@ ok "Workdir: $WORKDIR"
 # ---- Copy source locally ----
 log "Copying source file locally..."
 rm -f "$LOCAL_SOURCE"
-rsync --progress --inplace -W "$SOURCE" "$LOCAL_SOURCE"
+SOURCE_SIZE=$(stat -f%z "$SOURCE")
+cp "$SOURCE" "$LOCAL_SOURCE" &
+CP_PID=$!
+while kill -0 $CP_PID 2>/dev/null; do
+    COPIED=$(stat -f%z "$LOCAL_SOURCE" 2>/dev/null || echo 0)
+    PCT=$((COPIED * 100 / SOURCE_SIZE))
+    COPIED_GB=$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")
+    TOTAL_GB=$(awk "BEGIN{printf \"%.1f\", $SOURCE_SIZE/1073741824}")
+    printf "\r  %s GB / %s GB (%d%%)" "$COPIED_GB" "$TOTAL_GB" "$PCT"
+    sleep 2
+done
+wait $CP_PID
+echo ""
 ok "Copied: $FILENAME"
 
 # ---- Inspect tracks ----

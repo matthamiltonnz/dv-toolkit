@@ -171,9 +171,24 @@ convert_file() {
         ln "$SOURCE" "$LOCAL_SOURCE"
         ok "Linked."
     else
-        log "Copying source file locally (rsync)..."
+        log "Copying source file locally..."
         rm -f "$LOCAL_SOURCE"
-        rsync --progress --inplace -W "$SOURCE" "$LOCAL_SOURCE"
+        local SRC_SIZE
+        SRC_SIZE=$(stat -f%z "$SOURCE")
+        cp "$SOURCE" "$LOCAL_SOURCE" &
+        local CP_PID=$!
+        while kill -0 $CP_PID 2>/dev/null; do
+            local COPIED
+            COPIED=$(stat -f%z "$LOCAL_SOURCE" 2>/dev/null || echo 0)
+            local PCT=$((COPIED * 100 / SRC_SIZE))
+            printf "\r  %s GB / %s GB (%d%%)" \
+                "$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")" \
+                "$(awk "BEGIN{printf \"%.1f\", $SRC_SIZE/1073741824}")" \
+                "$PCT"
+            sleep 2
+        done
+        wait $CP_PID
+        echo ""
         ok "Copied."
     fi
 
