@@ -206,8 +206,8 @@ echo ""
 
 hdr "STEP 2 — Copy"
 log "Copying source file locally..."
+rm -rf "$WORKDIR"
 mkdir -p "$WORKDIR"
-rm -f "$LOCAL_SOURCE"
 SOURCE_SIZE=$(stat -f%z "$SOURCE")
 cp "$SOURCE" "$LOCAL_SOURCE" &
 CP_PID=$!
