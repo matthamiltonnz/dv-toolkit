@@ -52,6 +52,8 @@ FFPROBE=$(resolve_tool ffprobe)
 DOVI=$(resolve_tool dovi_tool)
 MKVMERGE=$(resolve_tool mkvmerge)
 
+caffeinate -i -w $$ &
+
 # ---- Argument check ----
 if [ -z "$1" ]; then
     err "No folder specified."

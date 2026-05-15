@@ -92,6 +92,8 @@ FFPROBE=$(resolve_tool ffprobe)
 DOVI=$(resolve_tool dovi_tool)
 MKVMERGE=$(resolve_tool mkvmerge)
 
+caffeinate -i -w $$ &
+
 if [ -d "$SOURCE" ]; then
     err "A folder was dropped onto this script. This script converts a single video file."
     err "To batch-convert a folder, use drop_FOLDER_batch_convert_p7_to_p8.sh instead."

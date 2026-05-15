@@ -57,6 +57,8 @@ FFMPEG=$(resolve_tool ffmpeg)
 FFPROBE=$(resolve_tool ffprobe)
 MKVMERGE=$(resolve_tool mkvmerge)
 
+caffeinate -i -w $$ &
+
 # ---- Argument check ----
 if [ -z "$1" ]; then
     err "No file specified."
