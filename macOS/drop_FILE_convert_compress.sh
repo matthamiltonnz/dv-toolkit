@@ -400,9 +400,9 @@ declare -a AUDIO_LANG_ARR
 while IFS= read -r line; do
     INDEX=$(echo "$line" | grep -o '"index": [0-9]*' | head -1 | awk '{print $2}')
     CODEC=$(echo "$line" | grep -o '"codec_name": "[^"]*"' | head -1 | cut -d'"' -f4)
-    LANG=$(echo "$line" | grep -o '"language": "[^"]*"' | cut -d'"' -f4)
-    TITLE=$(echo "$line" | grep -o '"title": "[^"]*"' | cut -d'"' -f4)
-    PROFILE=$(echo "$line" | grep -o '"profile": "[^"]*"' | cut -d'"' -f4)
+    LANG=$(echo "$line" | grep -o '"language": "[^"]*"' | head -1 | cut -d'"' -f4)
+    TITLE=$(echo "$line" | grep -o '"title": "[^"]*"' | head -1 | cut -d'"' -f4)
+    PROFILE=$(echo "$line" | grep -o '"profile": "[^"]*"' | head -1 | cut -d'"' -f4)
     CHANNELS=$(echo "$line" | grep -o '"channels": [0-9]*' | awk '{print $2}')
     echo "    [$AUDIO_COUNT] Track $INDEX — $CODEC ${CHANNELS}ch  lang:${LANG:-unknown}  ${TITLE}"
     AUDIO_INFO[$AUDIO_COUNT]="$INDEX"
