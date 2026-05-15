@@ -107,11 +107,16 @@ The scripts copy source files locally during processing. Ensure the drive contai
 **Drag an MKV file onto this script** to convert it from Profile 7 to Profile 8.
 
 **What it does:**
-- Detects single-track or dual-track (BL+EL) Profile 7 sources automatically
+- Checks DV profile — exits cleanly if file is not Profile 7
+- Lists all audio and subtitle tracks and prompts for which to keep (Enter = keep all; subtitle prompt skipped if file has none)
+- Offers to convert TrueHD Atmos tracks to EAC3 Atmos at 768 kbps (Apple TV compatibility)
+- Offers to convert non-Atmos TrueHD tracks to EAC3 at 768 kbps (size saving, lossy — clearly flagged)
+- For EAC3 conversion, asks whether to add EAC3 alongside TrueHD or replace it
+- All track inspection and prompts happen before the copy — so once you confirm, you can walk away
 - Copies the source file to a local `work\` subfolder before processing (avoids slow network read/write throughout)
+- Detects single-track or dual-track (BL+EL) Profile 7 sources automatically
 - Converts RPU metadata from P7 to P8 using mode 2 (removes FEL luma/chroma mapping cleanly)
 - Deletes intermediate files as it goes to minimise peak disk usage
-- Remuxes all original audio and subtitle tracks
 - Renames the original to `.bak`, copies the converted file back with the original filename, then deletes the `.bak`
 - On error, preserves the work folder for investigation — the original is always safe until the final step
 
@@ -157,9 +162,10 @@ The scripts copy source files locally during processing. Ensure the drive contai
 **Background:** Apple TV 4K cannot play TrueHD Atmos natively — it passes TrueHD audio as multi-channel PCM, which loses the Atmos spatial layer entirely. EAC3 (Dolby Digital Plus with JOC) is the format used by streaming services and is played back by Apple TV with full Atmos support. Adding an EAC3 track alongside the original TrueHD means both Atmos sources are in the file — Apple TV uses EAC3, while other players (Infuse, Kodi, dedicated disc players) can use TrueHD.
 
 **What it does:**
-- Detects TrueHD Atmos tracks (identified by 'Atmos' in the track title tag, as set by MakeMKV)
-- Converts each to EAC3 Atmos at 768 kbps — preserves the Atmos JOC spatial metadata
-- Adds converted tracks alongside originals via mkvmerge — original TrueHD track is kept
+- Detects TrueHD Atmos tracks using ffprobe's codec-level profile field (MAT 2.0 detection), with track title as fallback — reliable regardless of how the file was tagged
+- Optionally also converts non-Atmos TrueHD tracks to EAC3 at 768 kbps (size saving, lossy — clearly flagged)
+- Asks whether to **add** EAC3 alongside the original TrueHD (both tracks kept) or **replace** TrueHD with EAC3 only (smaller output)
+- Copies the source locally before processing — avoids slow network reads on large files
 - No video re-encoding — audio only
 
 **Output:** New file in the same folder as the source, named `_atmos_eac3.mkv`. Original file is kept.
@@ -330,20 +336,22 @@ When run interactively (no arguments) the script prompts for mode.
 
 **In all modes the script:**
 - Checks DV profile before prompting for mode — exits cleanly if file is already P8 and no action is needed
-- Copies the source to `/tmp/dv-toolkit/` before processing (avoids OneDrive or iCloud sync of intermediate files)
-- Detects and handles P7 single-track and dual-track (BL+EL) sources automatically
-- Lists all audio and subtitle tracks and prompts for which to keep
+- Lists all audio and subtitle tracks and prompts for which to keep (subtitle prompt skipped if file has none)
 - Offers to convert TrueHD Atmos tracks to EAC3 Atmos (HEVC/AV1 modes only — see below)
+- Confirms the output filename (reflecting all choices, including EAC3 conversion) before starting the copy
+- Copies the source to `/tmp/dv-toolkit/` before processing (avoids OneDrive or iCloud sync of intermediate files)
+- All prompts run before the copy — once you confirm, you can walk away
+- Detects and handles P7 single-track and dual-track (BL+EL) sources automatically
 - Deletes intermediate files as it goes to minimise disk usage
 - Pauses at completion so the Terminal window stays open
 
-**TrueHD Atmos conversion (HEVC and AV1 modes):** After track selection, the script detects any TrueHD Atmos tracks (identified by 'Atmos' in the track title) and asks whether to convert them to EAC3 Atmos at 768 kbps. If yes, the TrueHD tracks are replaced by EAC3 in the output — the lossless TrueHD is not retained in the compressed file (since you are already trading lossless quality for a smaller file). Use the standalone `drop_FILE_add_atmos_eac3.sh` tool instead if you want to keep both TrueHD and EAC3 tracks together.
+**TrueHD Atmos conversion (HEVC and AV1 modes):** After track selection, the script detects any TrueHD Atmos tracks using ffprobe's codec-level profile field (MAT 2.0 detection), with track title as fallback. It asks whether to convert them to EAC3 Atmos at 768 kbps. Non-Atmos TrueHD tracks are offered separately as a size-saving option (lossy — clearly flagged). If converting, the TrueHD tracks are replaced by EAC3 in the output — the lossless TrueHD is not retained in the compressed file (since you are already trading lossless quality for a smaller file). The output filename is updated to reflect the conversion (e.g. `TrueHD Atmos` becomes `EAC3 Atmos` in the name). Use the standalone `drop_FILE_add_atmos_eac3.sh` tool instead if you want to keep both TrueHD and EAC3 tracks together.
 
 > ⚠️ **Remux mode deletes the original file after successful conversion.** Make a backup first if you need to preserve the original. HEVC and AV1 modes keep the original.
 
 **Remux output:** Replaces the original file in-place.
-**HEVC output:** New file alongside the original, named `_Nmbps.mkv` (e.g. `MovieName_25mbps.mkv`). Original kept for quality comparison.
-**AV1 output:** New file alongside the original, named `_av1_crf27.mkv`. Original kept for quality comparison.
+**HEVC output:** New file alongside the original, named `_Nmbps.mkv` (e.g. `MovieName_25mbps.mkv`). If EAC3 conversion was chosen, the audio codec is reflected in the name (e.g. `MovieName EAC3 Atmos_25mbps.mkv`). Original kept for quality comparison.
+**AV1 output:** New file alongside the original, named `_av1_crf27.mkv` (same EAC3 naming convention applies). Original kept for quality comparison.
 
 ---
 
@@ -426,12 +434,13 @@ Mirrors the Windows scanner. Drag a folder onto the Automator wrapper, or run fr
 ```
 
 **What it does:**
-- Detects TrueHD Atmos tracks (identified by 'Atmos' in the track title tag, as set by MakeMKV)
-- Converts each to EAC3 Atmos at 768 kbps — preserves the Atmos JOC spatial metadata
-- Adds converted tracks alongside originals — original TrueHD track is kept
+- Detects TrueHD Atmos tracks using ffprobe's codec-level profile field (MAT 2.0 detection), with track title as fallback — reliable regardless of how the file was tagged
+- Optionally also converts non-Atmos TrueHD tracks to EAC3 at 768 kbps (size saving, lossy — clearly flagged)
+- Asks whether to **add** EAC3 alongside the original TrueHD (both tracks kept) or **replace** TrueHD with EAC3 only (smaller output)
+- Copies the source to `/tmp/dv-toolkit/` before processing — avoids slow network reads and cloud sync of intermediate files
 - No video re-encoding — audio only
 
-**Output:** New file in the same folder as the source, named `_atmos_eac3.mkv`. Original file is kept. If output and source are on different volumes (e.g. NAS), the output is written to `/tmp/dv-toolkit/` then copied back.
+**Output:** New file in the same folder as the source, named `_atmos_eac3.mkv`. Original file is kept.
 
 > ℹ️ This script requires only `ffmpeg` and `mkvmerge` — `dovi_tool` is not needed.
 

@@ -237,6 +237,14 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Added Atmos conversion option to macOS single-file compress script (HEVC/AV1 modes) — TrueHD replaced by EAC3 in compressed output |
 | May 2026 | Extended Atmos tools to also offer non-Atmos TrueHD → EAC3 conversion (size saving, lossy — clearly flagged); improved Atmos detection to use ffprobe profile field (codec-level) plus title tag fallback |
 | May 2026 | Replaced rsync with cp+progress loop for copy-out step in macOS single-file compress script (all three paths) — consistent with copy-in and batch converter |
+| May 2026 | Added add/replace option to both EAC3 converter scripts (macOS and Windows) — replace removes original TrueHD from output, add keeps both tracks; mkvmerge uses absolute stream index exclusion (`!N` syntax) for replace mode |
+| May 2026 | macOS EAC3 converter: added local copy phase (cp + progress loop) before ffmpeg and mkvmerge — was reading directly from NAS causing silent hang appearance on large files |
+| May 2026 | Windows EAC3 converter: added local copy phase (xcopy) before ffmpeg and mkvmerge — same fix as macOS |
+| May 2026 | Windows P7→P8 single-file converter: added audio track inspection/selection, subtitle track inspection/selection (skipped if no subtitle tracks), TrueHD Atmos → EAC3 offer, non-Atmos TrueHD → EAC3 offer, add/replace choice; track inspection now runs before copy so user can walk away; mkvmerge call replaced with PowerShell script for dynamic audio/subtitle/EAC3 arg building — brings Windows to parity with macOS remux mode |
+| May 2026 | macOS compress script: moved all track inspection and prompts before copy phase — ffprobe reads only container headers from NAS source (fast); copy deferred until all decisions confirmed |
+| May 2026 | macOS compress script: output filename now shown after all audio decisions (not before); output name reflects EAC3 conversion choice (TrueHD Atmos → EAC3 Atmos substituted in filename) |
+| May 2026 | macOS compress script: subtitle prompt skipped when source has no subtitle tracks |
+| May 2026 | macOS compress script: fixed grep -o duplicate match bug — language/title/profile fields matched twice (once at promoted top level, once inside tags object) producing newline-separated values; fixed with head -1; Windows unaffected (uses PowerShell ConvertFrom-Json direct property access) |
 
 ---
 
