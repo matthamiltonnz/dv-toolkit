@@ -87,6 +87,7 @@ if [ ! -f "$SOURCE" ]; then
 fi
 
 WORKDIR="/tmp/dv-toolkit/${NAME}_atmos"
+LOCAL_SOURCE="$WORKDIR/$FILENAME"
 ATMOS_TRACKS_FILE="$WORKDIR/atmos_tracks.txt"
 OUTPUT_MKV="$WORKDIR/output.mkv"
 OUTPUT_FINAL="$SOURCEDIR/${NAME}_atmos_eac3.mkv"
@@ -203,7 +204,27 @@ echo ""
 read -r -p "  Press Enter to continue or Ctrl+C to cancel..."
 echo ""
 
-hdr "STEP 2 — Converting to EAC3"
+hdr "STEP 2 — Copy"
+log "Copying source file locally..."
+mkdir -p "$WORKDIR"
+rm -f "$LOCAL_SOURCE"
+SOURCE_SIZE=$(stat -f%z "$SOURCE")
+cp "$SOURCE" "$LOCAL_SOURCE" &
+CP_PID=$!
+while kill -0 $CP_PID 2>/dev/null; do
+    COPIED=$(stat -f%z "$LOCAL_SOURCE" 2>/dev/null || echo 0)
+    PCT=$((COPIED * 100 / SOURCE_SIZE))
+    printf "\r  %s GB / %s GB (%d%%)" \
+        "$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")" \
+        "$(awk "BEGIN{printf \"%.1f\", $SOURCE_SIZE/1073741824}")" \
+        "$PCT"
+    sleep 2
+done
+wait $CP_PID
+echo ""
+ok "Copied: $FILENAME"
+
+hdr "STEP 3 — Converting to EAC3"
 
 declare -a EAC3_FILES
 declare -a EAC3_LANGS
@@ -230,7 +251,7 @@ while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS STREAM_IDX; do
     else
         log "Converting (size saving): $TITLE → EAC3 at 768 kbps..."
     fi
-    "$FFMPEG" -y -i "$SOURCE" -map "0:a:${AUDIO_IDX}" -c:a eac3 -b:a 768k "$EAC3_FILE" 2>/dev/null
+    "$FFMPEG" -y -i "$LOCAL_SOURCE" -map "0:a:${AUDIO_IDX}" -c:a eac3 -b:a 768k "$EAC3_FILE" 2>/dev/null
     ok "Converted: $NEW_TITLE"
 
     EAC3_FILES[$EAC3_COUNT]="$EAC3_FILE"
@@ -240,7 +261,7 @@ while IFS='|' read -r AUDIO_IDX LANG TITLE CHANNELS IS_ATMOS STREAM_IDX; do
     ((EAC3_COUNT++)) || true
 done < "$ATMOS_TRACKS_FILE"
 
-hdr "STEP 3 — Remuxing"
+hdr "STEP 4 — Remuxing"
 log "Adding EAC3 tracks to MKV..."
 
 if [ "$REPLACE_TRUEHD" == "1" ]; then
@@ -248,9 +269,9 @@ if [ "$REPLACE_TRUEHD" == "1" ]; then
     for SIDX in "${REPLACED_STREAM_IDXS[@]}"; do
         EXCL="${EXCL}!${SIDX},"
     done
-    MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" --audio-tracks "${EXCL%,}" "$SOURCE")
+    MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" --audio-tracks "${EXCL%,}" "$LOCAL_SOURCE")
 else
-    MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" "$SOURCE")
+    MERGE_ARGS=("$MKVMERGE" -o "$OUTPUT_MKV" "$LOCAL_SOURCE")
 fi
 IDX=0
 for EAC3_FILE in "${EAC3_FILES[@]}"; do
@@ -260,8 +281,9 @@ done
 
 "${MERGE_ARGS[@]}"
 ok "Remux complete."
+rm "$LOCAL_SOURCE"
 
-hdr "STEP 4 — Finalise"
+hdr "STEP 5 — Finalise"
 
 SOURCE_DEV=$(stat -f %d "$SOURCEDIR")
 TMP_DEV=$(stat -f %d "$WORKDIR")
