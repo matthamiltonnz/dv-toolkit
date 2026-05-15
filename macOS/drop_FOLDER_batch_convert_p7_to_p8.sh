@@ -172,7 +172,7 @@ convert_file() {
         ok "Linked."
     else
         log "Copying source file locally (rsync)..."
-        rsync --progress "$SOURCE" "$LOCAL_SOURCE"
+        rsync --progress --inplace "$SOURCE" "$LOCAL_SOURCE"
         ok "Copied."
     fi
 

@@ -345,7 +345,7 @@ ok "Workdir: $WORKDIR"
 
 # ---- Copy source locally ----
 log "Copying source file locally..."
-rsync --progress "$SOURCE" "$LOCAL_SOURCE"
+rsync --progress --inplace "$SOURCE" "$LOCAL_SOURCE"
 ok "Copied: $FILENAME"
 
 # ---- Inspect tracks ----
