@@ -20,6 +20,7 @@ On macOS with an Apple Silicon Mac, an optional compression mode is available th
 | P7 → P8 conversion (batch folder) | ✓ `drop_FOLDER_batch_convert_p7_to_p8.bat` | ✓ `drop_FOLDER_batch_convert_p7_to_p8.sh` |
 | Library profile scanner | ✓ `drop_FOLDER_scan_dv_profiles.bat` | ✓ `drop_FOLDER_scan_dv_profiles.sh` |
 | Compression (re-encode) | ✗ Not supported¹ | ✓ `drop_FILE_convert_compress.sh` (compress mode) |
+| TrueHD Atmos → EAC3 Atmos | ✓ `drop_FILE_add_atmos_eac3.bat` | ✓ `drop_FILE_add_atmos_eac3.sh` |
 
 > ¹ **Windows compression is not supported.** Preserving Dolby Vision metadata during HEVC re-encoding requires hardware encoder support for DV passthrough. AMD GPUs (including RDNA 4) strip DV metadata in their hardware encoders, and CPU encoding via x265 is impractically slow for 4K UHD content. Compression is only available on macOS using Apple's VideoToolbox encoder on M-series chips.
 
@@ -43,6 +44,7 @@ windows\
   drop_FILE_convert_p7_to_p8.bat
   drop_FOLDER_batch_convert_p7_to_p8.bat
   drop_FOLDER_scan_dv_profiles.bat
+  drop_FILE_add_atmos_eac3.bat
 ```
 
 The scripts automatically add the `bin\` folder to the PATH when run — no system PATH changes needed.
@@ -54,6 +56,7 @@ Place the following batch files in the `windows\` folder:
 - `drop_FILE_convert_p7_to_p8.bat` — single file converter
 - `drop_FOLDER_batch_convert_p7_to_p8.bat` — batch folder converter
 - `drop_FOLDER_scan_dv_profiles.bat` — library scanner
+- `drop_FILE_add_atmos_eac3.bat` — TrueHD Atmos to EAC3 Atmos converter
 
 ### 3. Download required binaries
 
@@ -88,6 +91,7 @@ windows\
   drop_FILE_convert_p7_to_p8.bat
   drop_FOLDER_batch_convert_p7_to_p8.bat
   drop_FOLDER_scan_dv_profiles.bat
+  drop_FILE_add_atmos_eac3.bat
 ```
 
 ### 5. Disk space
@@ -146,6 +150,24 @@ The scripts copy source files locally during processing. Ensure the drive contai
 
 ---
 
+### `drop_FILE_add_atmos_eac3.bat` — TrueHD Atmos → EAC3 Atmos Converter
+
+**Drag an MKV file onto this script** to add an EAC3 Atmos audio track alongside the existing TrueHD Atmos track.
+
+**Background:** Apple TV 4K cannot play TrueHD Atmos natively — it passes TrueHD audio as multi-channel PCM, which loses the Atmos spatial layer entirely. EAC3 (Dolby Digital Plus with JOC) is the format used by streaming services and is played back by Apple TV with full Atmos support. Adding an EAC3 track alongside the original TrueHD means both Atmos sources are in the file — Apple TV uses EAC3, while other players (Infuse, Kodi, dedicated disc players) can use TrueHD.
+
+**What it does:**
+- Detects TrueHD Atmos tracks (identified by 'Atmos' in the track title tag, as set by MakeMKV)
+- Converts each to EAC3 Atmos at 768 kbps — preserves the Atmos JOC spatial metadata
+- Adds converted tracks alongside originals via mkvmerge — original TrueHD track is kept
+- No video re-encoding — audio only
+
+**Output:** New file in the same folder as the source, named `_atmos_eac3.mkv`. Original file is kept.
+
+> ℹ️ This script requires only `ffmpeg` and `mkvmerge` — `dovi_tool` is not needed.
+
+---
+
 ## macOS Setup
 
 ### 1. Install Homebrew (if not already installed)
@@ -195,6 +217,7 @@ macos/
   drop_FILE_convert_compress.sh
   drop_FOLDER_batch_convert_p7_to_p8.sh
   drop_FOLDER_scan_dv_profiles.sh
+  drop_FILE_add_atmos_eac3.sh
 ```
 
 Run the included setup script to set permissions in one step:
@@ -209,6 +232,7 @@ Or set permissions manually:
 chmod +x /path/to/drop_FILE_convert_compress.sh
 chmod +x /path/to/drop_FOLDER_batch_convert_p7_to_p8.sh
 chmod +x /path/to/drop_FOLDER_scan_dv_profiles.sh
+chmod +x /path/to/drop_FILE_add_atmos_eac3.sh
 ```
 
 ### 5. Set up drag-and-drop (Automator)
@@ -234,7 +258,7 @@ done
 6. Replace `/path/to/script.sh` with the full path to your script (drag the `.sh` file into Terminal to get its path)
 7. Save as an Application — e.g. **Convert DV** or **Scan DV** — to your Applications folder or Desktop
 
-Create one Automator Application per script (`drop_FILE_convert_compress.sh`, `drop_FOLDER_batch_convert_p7_to_p8.sh`, `drop_FOLDER_scan_dv_profiles.sh`), each pointing to its own script path.
+Create one Automator Application per script (`drop_FILE_convert_compress.sh`, `drop_FOLDER_batch_convert_p7_to_p8.sh`, `drop_FOLDER_scan_dv_profiles.sh`, `drop_FILE_add_atmos_eac3.sh`), each pointing to its own script path.
 
 **Automator variants for `drop_FILE_convert_compress.sh`:**
 
@@ -309,8 +333,11 @@ When run interactively (no arguments) the script prompts for mode.
 - Copies the source to `/tmp/dv-toolkit/` before processing (avoids OneDrive or iCloud sync of intermediate files)
 - Detects and handles P7 single-track and dual-track (BL+EL) sources automatically
 - Lists all audio and subtitle tracks and prompts for which to keep
+- Offers to convert TrueHD Atmos tracks to EAC3 Atmos (HEVC/AV1 modes only — see below)
 - Deletes intermediate files as it goes to minimise disk usage
 - Pauses at completion so the Terminal window stays open
+
+**TrueHD Atmos conversion (HEVC and AV1 modes):** After track selection, the script detects any TrueHD Atmos tracks (identified by 'Atmos' in the track title) and asks whether to convert them to EAC3 Atmos at 768 kbps. If yes, the TrueHD tracks are replaced by EAC3 in the output — the lossless TrueHD is not retained in the compressed file (since you are already trading lossless quality for a smaller file). Use the standalone `drop_FILE_add_atmos_eac3.sh` tool instead if you want to keep both TrueHD and EAC3 tracks together.
 
 > ⚠️ **Remux mode deletes the original file after successful conversion.** Make a backup first if you need to preserve the original. HEVC and AV1 modes keep the original.
 
@@ -386,6 +413,31 @@ Mirrors the Windows scanner. Drag a folder onto the Automator wrapper, or run fr
 - Supports multi-folder scanning with combined results
 
 **Output:** `dv_profile_scan.txt` in the scripts folder. To scan multiple folders, run the script separately for each — the report is overwritten each run.
+
+---
+
+### `drop_FILE_add_atmos_eac3.sh` — TrueHD Atmos → EAC3 Atmos Converter
+
+**Drag an MKV file onto the Automator wrapper** (or run from Terminal) to add an EAC3 Atmos track alongside the existing TrueHD Atmos track.
+
+**Usage:**
+```bash
+./drop_FILE_add_atmos_eac3.sh /path/to/movie.mkv
+```
+
+**What it does:**
+- Detects TrueHD Atmos tracks (identified by 'Atmos' in the track title tag, as set by MakeMKV)
+- Converts each to EAC3 Atmos at 768 kbps — preserves the Atmos JOC spatial metadata
+- Adds converted tracks alongside originals — original TrueHD track is kept
+- No video re-encoding — audio only
+
+**Output:** New file in the same folder as the source, named `_atmos_eac3.mkv`. Original file is kept. If output and source are on different volumes (e.g. NAS), the output is written to `/tmp/dv-toolkit/` then copied back.
+
+> ℹ️ This script requires only `ffmpeg` and `mkvmerge` — `dovi_tool` is not needed.
+
+**When to use this vs the option in `drop_FILE_convert_compress.sh`:**
+- Use this standalone tool when you want to keep both the TrueHD Atmos and EAC3 Atmos tracks — e.g. adding Apple TV compatibility to a file you want to keep at full lossless quality.
+- Use the conversion option inside the compress script when you are already compressing the video and don't need to retain the lossless audio.
 
 ---
 

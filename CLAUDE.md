@@ -233,6 +233,9 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
 | May 2026 | Removed multi-folder session persistence from Windows scanner — caused "The syntax of the command is incorrect." on cmd.exe; reverted to single-folder scan per run |
 | May 2026 | macOS convert script: added DV profile check before mode prompt; changed WORKDIR to /tmp/dv-toolkit to avoid OneDrive sync; HEVC/AV1 output named with quality suffix (_25mbps, _av1_crf27), originals kept; OneDrive detection notice added; fixed bash 3.2 `^^` bug in subtitle NONE check |
 | May 2026 | Windows scanner: added startup cleanup of leftover temp files from old session-based version |
+| May 2026 | Added TrueHD Atmos → EAC3 Atmos converter (drop_FILE_add_atmos_eac3.sh / .bat) — detects Atmos-flagged TrueHD tracks, converts to EAC3 768 kbps, adds alongside originals; output named _atmos_eac3.mkv |
+| May 2026 | Added Atmos conversion option to macOS single-file compress script (HEVC/AV1 modes) — TrueHD replaced by EAC3 in compressed output |
+| May 2026 | Replaced rsync with cp+progress loop for copy-out step in macOS single-file compress script (all three paths) — consistent with copy-in and batch converter |
 
 ---
 
@@ -256,12 +259,14 @@ mkvmerge -o output.mkv video.hevc --no-video --subtitle-tracks 4 source.mkv
     drop_FILE_convert_p7_to_p8.bat
     drop_FOLDER_batch_convert_p7_to_p8.bat
     drop_FOLDER_scan_dv_profiles.bat
+    drop_FILE_add_atmos_eac3.bat
   macOS/
     bin/                               ← gitignored, place dovi_tool here if not in PATH
       dovi_tool                          ← optional, can use system PATH instead
     drop_FILE_convert_compress.sh
     drop_FOLDER_batch_convert_p7_to_p8.sh
     drop_FOLDER_scan_dv_profiles.sh
+    drop_FILE_add_atmos_eac3.sh
     install.sh
 ```
 
@@ -337,6 +342,35 @@ The author's recommended screening workflow:
 4. **Out of scope** — the toolkit goal is a fast, lossless remux. DoViBaker + DoviScripts turns this into a full transcode pipeline.
 
 **Conclusion:** For the majority of sources, this toolkit's remux output is equivalent to or indistinguishable from a DoViBaker encode. DoViBaker + DoviScripts is the right choice for archival work on confirmed FEL sources where the EL shows significant pixel-level content and a re-encode at high bitrate is acceptable. Not suitable for this toolkit's workflow.
+
+---
+
+## TrueHD Atmos → EAC3 Atmos Notes
+
+### Background
+
+UHD Blu-ray rips from MakeMKV typically contain a TrueHD audio track. On discs with Atmos, TrueHD wraps both a 7.1 core track and the Atmos JOC (Joint Object Coding) object-based spatial metadata in a MAT (Metadata-enhanced Audio Transmission) container.
+
+Apple TV 4K cannot decode TrueHD natively. It passes TrueHD audio through as multi-channel PCM — the 7.1 core plays, but the Atmos MAT layer is discarded entirely. The result: no Atmos spatial audio, despite the track containing it.
+
+EAC3 (Dolby Digital Plus with JOC extension) is the streaming format for Atmos. Apple TV decodes EAC3 Atmos natively and passes it to the AVR or TV as an Atmos bitstream. Adding an EAC3 Atmos track to an MKV alongside the original TrueHD makes the file compatible with Apple TV while still providing lossless audio for players that support TrueHD (Infuse with a capable receiver, Kodi, dedicated disc players).
+
+### Detection
+
+Atmos-flagged tracks are identified by the presence of 'Atmos' (case-insensitive) in the track's title tag, as set by MakeMKV during ripping. This is the most reliable detection method available without extracting and analysing the raw TrueHD bitstream. A TrueHD 7.1 track without 'Atmos' in its title is not converted — it may or may not contain Atmos data, but the conservative approach is to leave it untouched.
+
+### Conversion
+
+FFmpeg's EAC3 encoder handles TrueHD → EAC3 conversion, preserving the JOC Atmos object data in the output stream. 768 kbps is the standard bitrate for EAC3 7.1 Atmos on streaming services (Dolby's recommended ceiling for EAC3 7.1).
+
+```bash
+ffmpeg -i input.mkv -map 0:a:N -c:a eac3 -b:a 768k output.eac3
+```
+
+### Two modes
+
+- **Standalone tool** (`drop_FILE_add_atmos_eac3.sh` / `.bat`): Adds EAC3 alongside TrueHD. Both tracks in output. Original MKV kept. For files you want to remain full quality.
+- **Integrated in compress script** (`drop_FILE_convert_compress.sh`, HEVC/AV1 modes): TrueHD replaced by EAC3 in the compressed output. No TrueHD in output. Appropriate since you're already accepting lossy video compression.
 
 ---
 

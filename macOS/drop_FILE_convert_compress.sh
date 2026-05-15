@@ -418,6 +418,9 @@ echo ""
 echo "  Audio tracks:"
 AUDIO_COUNT=0
 declare -a AUDIO_INFO
+declare -a AUDIO_IS_ATMOS
+declare -a AUDIO_TITLE_ARR
+declare -a AUDIO_LANG_ARR
 while IFS= read -r line; do
     INDEX=$(echo "$line" | grep -o '"index": [0-9]*' | head -1 | awk '{print $2}')
     CODEC=$(echo "$line" | grep -o '"codec_name": "[^"]*"' | head -1 | cut -d'"' -f4)
@@ -426,6 +429,13 @@ while IFS= read -r line; do
     CHANNELS=$(echo "$line" | grep -o '"channels": [0-9]*' | awk '{print $2}')
     echo "    [$AUDIO_COUNT] Track $INDEX — $CODEC ${CHANNELS}ch  lang:${LANG:-unknown}  ${TITLE}"
     AUDIO_INFO[$AUDIO_COUNT]="$INDEX"
+    AUDIO_TITLE_ARR[$AUDIO_COUNT]="$TITLE"
+    AUDIO_LANG_ARR[$AUDIO_COUNT]="${LANG:-und}"
+    if [[ "$CODEC" == "truehd" ]] && echo "$TITLE" | grep -qi "atmos"; then
+        AUDIO_IS_ATMOS[$AUDIO_COUNT]=1
+    else
+        AUDIO_IS_ATMOS[$AUDIO_COUNT]=0
+    fi
     ((AUDIO_COUNT++)) || true
 done < <("$FFPROBE" -v quiet -show_streams -select_streams a -of json "$LOCAL_SOURCE" | \
     python3 -c "
@@ -499,6 +509,90 @@ fi
 echo ""
 ok "Track selection confirmed."
 
+# ---- Atmos detection and conversion offer (HEVC/AV1 only) ----
+declare -a EAC3_MERGE_ARGS
+declare -a ATMOS_TRACKS_TO_CONVERT
+CONVERT_ATMOS=0
+
+if [ "$REMUX_ONLY" != "1" ] && [ "$AUDIO_COUNT" -gt 0 ]; then
+    N=0
+    while [ $N -lt $AUDIO_COUNT ]; do
+        INCLUDE=0
+        if [ -z "$AUDIO_CHOICE" ]; then
+            INCLUDE=1
+        else
+            for CHOSEN in $AUDIO_CHOICE; do
+                [ "$CHOSEN" == "$N" ] && INCLUDE=1
+            done
+        fi
+        if [ "$INCLUDE" == "1" ] && [ "${AUDIO_IS_ATMOS[$N]}" == "1" ]; then
+            ATMOS_TRACKS_TO_CONVERT+=("$N")
+        fi
+        ((N++)) || true
+    done
+
+    if [ "${#ATMOS_TRACKS_TO_CONVERT[@]}" -gt 0 ]; then
+        echo ""
+        echo "  TrueHD Atmos track(s) detected in selection:"
+        for N in "${ATMOS_TRACKS_TO_CONVERT[@]}"; do
+            echo "    [$N] ${AUDIO_TITLE_ARR[$N]} (${AUDIO_LANG_ARR[$N]})"
+        done
+        echo ""
+        warn "Apple TV 4K passes TrueHD as multi-channel PCM, losing the Atmos layer."
+        echo "  Converting to EAC3 Atmos (768 kbps) preserves the Atmos spatial metadata."
+        echo "  The TrueHD track will be replaced by EAC3 in the output."
+        echo ""
+        read -r -p "  Convert TrueHD Atmos to EAC3 Atmos? [Y/n]: " ATMOS_CONV
+        if [[ "$ATMOS_CONV" == "y" || "$ATMOS_CONV" == "Y" || -z "$ATMOS_CONV" ]]; then
+            CONVERT_ATMOS=1
+        fi
+    fi
+fi
+
+# ---- Rebuild audio args excluding TrueHD Atmos if converting ----
+if [ "$CONVERT_ATMOS" == "1" ]; then
+    KEEP_AUDIO_TRACKS=""
+    N=0
+    while [ $N -lt $AUDIO_COUNT ]; do
+        INCLUDE=0
+        if [ -z "$AUDIO_CHOICE" ]; then
+            INCLUDE=1
+        else
+            for CHOSEN in $AUDIO_CHOICE; do
+                [ "$CHOSEN" == "$N" ] && INCLUDE=1
+            done
+        fi
+        if [ "$INCLUDE" == "1" ] && [ "${AUDIO_IS_ATMOS[$N]}" != "1" ]; then
+            KEEP_AUDIO_TRACKS="${KEEP_AUDIO_TRACKS}${AUDIO_INFO[$N]},"
+        fi
+        ((N++)) || true
+    done
+    if [ -n "$KEEP_AUDIO_TRACKS" ]; then
+        AUDIO_ARGS="--audio-tracks ${KEEP_AUDIO_TRACKS%,}"
+    else
+        AUDIO_ARGS="--no-audio"
+    fi
+fi
+
+# ---- Convert TrueHD Atmos to EAC3 if requested ----
+if [ "$CONVERT_ATMOS" == "1" ]; then
+    hdr "STEP 3b — TrueHD Atmos Conversion"
+    for N in "${ATMOS_TRACKS_TO_CONVERT[@]}"; do
+        EAC3_FILE="$WORKDIR/atmos_${N}.eac3"
+        TITLE="${AUDIO_TITLE_ARR[$N]}"
+        LANG="${AUDIO_LANG_ARR[$N]}"
+        if echo "$TITLE" | grep -qi "TrueHD"; then
+            NEW_TITLE=$(echo "$TITLE" | sed 's/TrueHD/EAC3/g')
+        else
+            NEW_TITLE="${TITLE} EAC3"
+        fi
+        log "Converting: $TITLE → EAC3 at 768 kbps..."
+        "$FFMPEG" -y -i "$LOCAL_SOURCE" -map "0:a:${N}" -c:a eac3 -b:a 768k "$EAC3_FILE" 2>/dev/null
+        ok "Converted: $NEW_TITLE"
+        EAC3_MERGE_ARGS+=(--language "0:${LANG}" --track-name "0:${NEW_TITLE}" "$EAC3_FILE")
+    done
+fi
+
 # ---- Extract and prepare base layer ----
 hdr "STEP 4 — DV Metadata Extraction"
 
@@ -553,7 +647,8 @@ if [ "$REMUX_ONLY" == "1" ]; then
         --no-video \
         $AUDIO_ARGS \
         $SUB_ARGS \
-        "$LOCAL_SOURCE"
+        "$LOCAL_SOURCE" \
+        "${EAC3_MERGE_ARGS[@]}"
     ok "Remux complete."
     rm "$INJECTED_HEVC" "$LOCAL_SOURCE"
 
@@ -563,9 +658,28 @@ if [ "$REMUX_ONLY" == "1" ]; then
     ok "Original renamed."
 
     log "Copying converted file back..."
-    rsync --progress "$OUTPUT_MKV" "$FINAL"
-    ok "File copied."
-    rm "$OUTPUT_MKV"
+    SOURCE_DEV_OUT=$(stat -f %d "$(dirname "$FINAL")")
+    TMP_DEV_OUT=$(stat -f %d "$WORKDIR")
+    if [ "$SOURCE_DEV_OUT" = "$TMP_DEV_OUT" ]; then
+        mv "$OUTPUT_MKV" "$FINAL"
+    else
+        SRC_SIZE_OUT=$(stat -f%z "$OUTPUT_MKV")
+        cp "$OUTPUT_MKV" "$FINAL" &
+        CP_PID=$!
+        while kill -0 $CP_PID 2>/dev/null; do
+            COPIED=$(stat -f%z "$FINAL" 2>/dev/null || echo 0)
+            PCT=$((COPIED * 100 / SRC_SIZE_OUT))
+            printf "\r  %s GB / %s GB (%d%%)" \
+                "$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")" \
+                "$(awk "BEGIN{printf \"%.1f\", $SRC_SIZE_OUT/1073741824}")" \
+                "$PCT"
+            sleep 2
+        done
+        wait $CP_PID
+        echo ""
+        rm "$OUTPUT_MKV"
+    fi
+    ok "File in place."
 
     log "Deleting original .bak..."
     rm "${SOURCE}.bak"
@@ -614,15 +728,35 @@ elif [ "$AV1_MODE" == "1" ]; then
         --no-video \
         $AUDIO_ARGS \
         $SUB_ARGS \
-        "$LOCAL_SOURCE"
+        "$LOCAL_SOURCE" \
+        "${EAC3_MERGE_ARGS[@]}"
     ok "Remux complete."
     rm "$ENCODED_AV1" "$LOCAL_SOURCE"
 
     hdr "STEP 7 — Finalise"
-    log "Copying output to source location..."
-    rsync --progress "$OUTPUT_MKV" "$FINAL"
+    log "Copying output to destination..."
+    SOURCE_DEV_OUT=$(stat -f %d "$(dirname "$FINAL")")
+    TMP_DEV_OUT=$(stat -f %d "$WORKDIR")
+    if [ "$SOURCE_DEV_OUT" = "$TMP_DEV_OUT" ]; then
+        mv "$OUTPUT_MKV" "$FINAL"
+    else
+        SRC_SIZE_OUT=$(stat -f%z "$OUTPUT_MKV")
+        cp "$OUTPUT_MKV" "$FINAL" &
+        CP_PID=$!
+        while kill -0 $CP_PID 2>/dev/null; do
+            COPIED=$(stat -f%z "$FINAL" 2>/dev/null || echo 0)
+            PCT=$((COPIED * 100 / SRC_SIZE_OUT))
+            printf "\r  %s GB / %s GB (%d%%)" \
+                "$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")" \
+                "$(awk "BEGIN{printf \"%.1f\", $SRC_SIZE_OUT/1073741824}")" \
+                "$PCT"
+            sleep 2
+        done
+        wait $CP_PID
+        echo ""
+        rm "$OUTPUT_MKV"
+    fi
     ok "File copied."
-    rm "$OUTPUT_MKV"
     rm -rf "$WORKDIR"
 
     SOURCE_SIZE=$(du -sh "$SOURCE" | cut -f1)
@@ -687,15 +821,35 @@ else
         --no-video \
         $AUDIO_ARGS \
         $SUB_ARGS \
-        "$LOCAL_SOURCE"
+        "$LOCAL_SOURCE" \
+        "${EAC3_MERGE_ARGS[@]}"
     ok "Remux complete."
     rm "$INJECTED_HEVC" "$LOCAL_SOURCE"
 
     hdr "STEP 9 — Finalise"
-    log "Copying compressed file to source location..."
-    rsync --progress "$OUTPUT_MKV" "$FINAL"
+    log "Copying compressed file to destination..."
+    SOURCE_DEV_OUT=$(stat -f %d "$(dirname "$FINAL")")
+    TMP_DEV_OUT=$(stat -f %d "$WORKDIR")
+    if [ "$SOURCE_DEV_OUT" = "$TMP_DEV_OUT" ]; then
+        mv "$OUTPUT_MKV" "$FINAL"
+    else
+        SRC_SIZE_OUT=$(stat -f%z "$OUTPUT_MKV")
+        cp "$OUTPUT_MKV" "$FINAL" &
+        CP_PID=$!
+        while kill -0 $CP_PID 2>/dev/null; do
+            COPIED=$(stat -f%z "$FINAL" 2>/dev/null || echo 0)
+            PCT=$((COPIED * 100 / SRC_SIZE_OUT))
+            printf "\r  %s GB / %s GB (%d%%)" \
+                "$(awk "BEGIN{printf \"%.1f\", $COPIED/1073741824}")" \
+                "$(awk "BEGIN{printf \"%.1f\", $SRC_SIZE_OUT/1073741824}")" \
+                "$PCT"
+            sleep 2
+        done
+        wait $CP_PID
+        echo ""
+        rm "$OUTPUT_MKV"
+    fi
     ok "File copied."
-    rm "$OUTPUT_MKV"
     rm -rf "$WORKDIR"
 
     SOURCE_SIZE=$(du -sh "$SOURCE" | cut -f1)
